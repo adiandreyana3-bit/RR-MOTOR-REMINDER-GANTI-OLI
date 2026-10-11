@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "770595546365",
+    "project_id": "rr-motor-reminder",
+    "storage_bucket": "rr-motor-reminder.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770595546365:android:effee1b4a12069aeee8a94",
+        "android_client_info": {
+          "package_name": "com.rrmotor.remindergantioli"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC4krT_urAIaDln7ejW3zLsxHMUO0aKhYI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
