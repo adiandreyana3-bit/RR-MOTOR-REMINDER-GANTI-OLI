@@ -1,11 +1,14 @@
 package com.rrmotor.remindergantioli;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.view.Gravity;
@@ -22,11 +25,13 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Date;
 
 public class MainActivity extends Activity {
 
     private final int HIJAU = Color.rgb(20, 130, 65);
     private static final int PILIH_KONTAK = 1001;
+    private static final int IZIN_NOTIFIKASI = 2001;
 
     private FirebaseAuth auth;
     private FirebaseFirestore db;
@@ -47,6 +52,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        formatTanggal.setLenient(false);
+
         FirebaseApp.initializeApp(this);
         auth = FirebaseAuth.getInstance();
         db = FirebaseFirestore.getInstance();
@@ -54,7 +61,54 @@ public class MainActivity extends Activity {
         if (auth.getCurrentUser() == null) {
             tampilkanLogin();
         } else {
+            mintaIzinNotifikasi();
             tampilkanForm();
+        }
+    }
+
+    private void mintaIzinNotifikasi() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(
+                Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            requestPermissions(
+                    new String[]{
+                            Manifest.permission.POST_NOTIFICATIONS
+                    },
+                    IZIN_NOTIFIKASI
+            );
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults) {
+
+        super.onRequestPermissionsResult(
+                requestCode, permissions, grantResults);
+
+        if (requestCode == IZIN_NOTIFIKASI) {
+            if (grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                Toast.makeText(
+                        this,
+                        "Izin notifikasi aktif.",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                periksaDanJadwalkanReminder();
+
+            } else {
+                Toast.makeText(
+                        this,
+                        "Izin notifikasi belum diberikan. Aktifkan di pengaturan aplikasi.",
+                        Toast.LENGTH_LONG
+                ).show();
+            }
         }
     }
 
@@ -78,6 +132,7 @@ public class MainActivity extends Activity {
         t.setGravity(Gravity.CENTER);
         t.setTypeface(null, 1);
         t.setPadding(0, 12, 0, 20);
+
         layout.addView(t);
     }
 
@@ -87,7 +142,10 @@ public class MainActivity extends Activity {
         e.setTextSize(16);
         e.setSingleLine(true);
 
-        layout.addView(e, new LinearLayout.LayoutParams(-1, -2));
+        layout.addView(
+                e,
+                new LinearLayout.LayoutParams(-1, -2));
+
         return e;
     }
 
@@ -98,7 +156,10 @@ public class MainActivity extends Activity {
         b.setBackgroundTintList(
                 android.content.res.ColorStateList.valueOf(HIJAU));
 
-        layout.addView(b, new LinearLayout.LayoutParams(-1, -2));
+        layout.addView(
+                b,
+                new LinearLayout.LayoutParams(-1, -2));
+
         b.setOnClickListener(v -> aksi.run());
 
         return b;
@@ -123,6 +184,7 @@ public class MainActivity extends Activity {
                 "Akun diperlukan untuk menyimpan riwayat pelanggan."
         );
         info.setPadding(0, 20, 0, 0);
+
         layout.addView(info);
     }
 
@@ -136,7 +198,10 @@ public class MainActivity extends Activity {
         }
 
         auth.signInWithEmailAndPassword(e, p)
-                .addOnSuccessListener(result -> tampilkanForm())
+                .addOnSuccessListener(result -> {
+                    mintaIzinNotifikasi();
+                    tampilkanForm();
+                })
                 .addOnFailureListener(error ->
                         pesan("Login gagal: " + error.getMessage()));
     }
@@ -151,13 +216,17 @@ public class MainActivity extends Activity {
         }
 
         auth.createUserWithEmailAndPassword(e, p)
-                .addOnSuccessListener(result -> tampilkanForm())
+                .addOnSuccessListener(result -> {
+                    mintaIzinNotifikasi();
+                    tampilkanForm();
+                })
                 .addOnFailureListener(error ->
                         pesan("Pendaftaran gagal: " + error.getMessage()));
     }
 
     private void tampilkanForm() {
         buatLayout();
+
         judul("🏍️ RR MOTOR\nREMINDER GANTI OLI");
 
         TextView akun = new TextView(this);
@@ -168,7 +237,10 @@ public class MainActivity extends Activity {
 
         tanggalInputView = input("Pilih tanggal input");
         tanggalDipilih = Calendar.getInstance();
-        tanggalInputView.setText(formatTanggal.format(tanggalDipilih.getTime()));
+
+        tanggalInputView.setText(
+                formatTanggal.format(tanggalDipilih.getTime()));
+
         tanggalInputView.setFocusable(false);
         tanggalInputView.setClickable(true);
         tanggalInputView.setOnClickListener(v -> pilihTanggal());
@@ -194,7 +266,11 @@ public class MainActivity extends Activity {
         interval.setAdapter(new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"1 BULAN", "1,5 BULAN", "2 BULAN"}
+                new String[]{
+                        "1 BULAN",
+                        "1,5 BULAN",
+                        "2 BULAN"
+                }
         ));
         layout.addView(interval);
 
@@ -226,6 +302,9 @@ public class MainActivity extends Activity {
                     })
                     .show();
         });
+
+        // Memeriksa data lama dan menjadwalkan notifikasi.
+        periksaDanJadwalkanReminder();
     }
 
     private void pilihTanggal() {
@@ -253,7 +332,8 @@ public class MainActivity extends Activity {
         try {
             Intent intent = new Intent(
                     Intent.ACTION_PICK,
-                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+                    android.provider.ContactsContract
+                            .CommonDataKinds.Phone.CONTENT_URI
             );
 
             startActivityForResult(intent, PILIH_KONTAK);
@@ -265,7 +345,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(
-            int requestCode, int resultCode, Intent data) {
+            int requestCode,
+            int resultCode,
+            Intent data) {
 
         super.onActivityResult(requestCode, resultCode, data);
 
@@ -286,8 +368,10 @@ public class MainActivity extends Activity {
                 cursor = getContentResolver().query(
                         kontakUri,
                         new String[]{
-                                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                                android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                                android.provider.ContactsContract
+                                        .CommonDataKinds.Phone.DISPLAY_NAME,
+                                android.provider.ContactsContract
+                                        .CommonDataKinds.Phone.NUMBER
                         },
                         null,
                         null,
@@ -298,7 +382,8 @@ public class MainActivity extends Activity {
                     String namaKontak = cursor.getString(0);
                     String nomorKontak = cursor.getString(1);
 
-                    if (namaKontak != null && !namaKontak.trim().isEmpty()) {
+                    if (namaKontak != null
+                            && !namaKontak.trim().isEmpty()) {
                         nama.setText(namaKontak.trim());
                     }
 
@@ -333,6 +418,7 @@ public class MainActivity extends Activity {
         t.setTextSize(15);
         t.setTextColor(Color.DKGRAY);
         t.setPadding(0, 12, 0, 4);
+
         layout.addView(t);
     }
 
@@ -366,24 +452,33 @@ public class MainActivity extends Activity {
             }
         }
 
-        Calendar tanggalDasar = (Calendar) tanggalDipilih.clone();
-        Calendar jatuhTempo = (Calendar) tanggalDasar.clone();
+        Calendar tanggalDasar =
+                (Calendar) tanggalDipilih.clone();
+
+        Calendar jatuhTempo =
+                (Calendar) tanggalDasar.clone();
 
         int pilihan = interval.getSelectedItemPosition();
 
         if (pilihan == 0) {
             jatuhTempo.add(Calendar.MONTH, 1);
+
         } else if (pilihan == 1) {
             jatuhTempo.add(Calendar.MONTH, 1);
             jatuhTempo.add(Calendar.DAY_OF_MONTH, 15);
+
         } else {
             jatuhTempo.add(Calendar.MONTH, 2);
         }
 
-        String tanggalInput = formatTanggal.format(tanggalDasar.getTime());
-        String tanggalTempo = formatTanggal.format(jatuhTempo.getTime());
+        String tanggalInput =
+                formatTanggal.format(tanggalDasar.getTime());
+
+        String tanggalTempo =
+                formatTanggal.format(jatuhTempo.getTime());
 
         Map<String, Object> data = new HashMap<>();
+
         data.put("uid", auth.getCurrentUser().getUid());
         data.put("nama", nama.getText().toString().trim());
         data.put("whatsapp", nomor);
@@ -404,19 +499,108 @@ public class MainActivity extends Activity {
                 .addOnSuccessListener(ref -> {
                     sedangMenyimpan = false;
 
+                    Calendar waktuNotifikasi =
+                            (Calendar) jatuhTempo.clone();
+
+                    waktuNotifikasi.set(Calendar.HOUR_OF_DAY, 9);
+                    waktuNotifikasi.set(Calendar.MINUTE, 0);
+                    waktuNotifikasi.set(Calendar.SECOND, 0);
+                    waktuNotifikasi.set(Calendar.MILLISECOND, 0);
+
+                    ReminderReceiver.jadwalkan(
+                            MainActivity.this,
+                            ref.getId(),
+                            nama.getText().toString().trim(),
+                            nopol.getText().toString().trim(),
+                            waktuNotifikasi.getTimeInMillis()
+                    );
+
                     new AlertDialog.Builder(this)
                             .setTitle("BERHASIL")
                             .setMessage(
                                     "Data pelanggan berhasil disimpan.\n\n" +
                                     "Tanggal input: " + tanggalInput +
-                                    "\nJatuh tempo: " + tanggalTempo)
-                            .setPositiveButton("OK", (d, w) -> tampilkanForm())
+                                    "\nJatuh tempo: " + tanggalTempo +
+                                    "\nNotifikasi dijadwalkan pukul 09.00."
+                            )
+                            .setPositiveButton(
+                                    "OK",
+                                    (d, w) -> tampilkanForm())
                             .show();
                 })
                 .addOnFailureListener(error -> {
                     sedangMenyimpan = false;
                     pesan("Gagal menyimpan data: " + error.getMessage());
                 });
+    }
+
+    private void periksaDanJadwalkanReminder() {
+        if (auth.getCurrentUser() == null) {
+            return;
+        }
+
+        db.collection("reminders")
+                .whereEqualTo(
+                        "uid",
+                        auth.getCurrentUser().getUid())
+                .get()
+                .addOnSuccessListener(snapshot -> {
+                    for (DocumentSnapshot doc : snapshot.getDocuments()) {
+
+                        String status = nilai(doc, "status");
+
+                        if ("TERKIRIM".equalsIgnoreCase(status)
+                                || "SUDAH TERKIRIM".equalsIgnoreCase(status)) {
+
+                            ReminderReceiver.batalkan(
+                                    MainActivity.this,
+                                    doc.getId());
+
+                            continue;
+                        }
+
+                        String tanggal = doc.getString("jatuhTempo");
+
+                        if (tanggal == null || tanggal.trim().isEmpty()) {
+                            continue;
+                        }
+
+                        try {
+                            Date tanggalParsed =
+                                    formatTanggal.parse(tanggal);
+
+                            if (tanggalParsed == null) {
+                                continue;
+                            }
+
+                            Calendar waktu = Calendar.getInstance();
+                            waktu.setTime(tanggalParsed);
+                            waktu.set(Calendar.HOUR_OF_DAY, 9);
+                            waktu.set(Calendar.MINUTE, 0);
+                            waktu.set(Calendar.SECOND, 0);
+                            waktu.set(Calendar.MILLISECOND, 0);
+
+                            ReminderReceiver.jadwalkan(
+                                    MainActivity.this,
+                                    doc.getId(),
+                                    doc.getString("nama"),
+                                    doc.getString("nopol"),
+                                    waktu.getTimeInMillis()
+                            );
+
+                        } catch (Exception e) {
+                            android.util.Log.e(
+                                    "RR_MOTOR",
+                                    "Gagal membaca tanggal jatuh tempo",
+                                    e);
+                        }
+                    }
+                })
+                .addOnFailureListener(error ->
+                        android.util.Log.e(
+                                "RR_MOTOR",
+                                "Gagal memeriksa reminder Firebase",
+                                error));
     }
 
     private void riwayat() {
@@ -426,14 +610,18 @@ public class MainActivity extends Activity {
         }
 
         db.collection("reminders")
-                .whereEqualTo("uid", auth.getCurrentUser().getUid())
+                .whereEqualTo(
+                        "uid",
+                        auth.getCurrentUser().getUid())
                 .get()
                 .addOnSuccessListener(snapshot -> {
+
                     ScrollView scroll = new ScrollView(this);
 
                     LinearLayout daftar = new LinearLayout(this);
                     daftar.setOrientation(LinearLayout.VERTICAL);
                     daftar.setPadding(16, 12, 16, 12);
+
                     scroll.addView(daftar);
 
                     if (snapshot.isEmpty()) {
@@ -444,6 +632,7 @@ public class MainActivity extends Activity {
                     }
 
                     for (DocumentSnapshot doc : snapshot.getDocuments()) {
+
                         String namaPelanggan = nilai(doc, "nama");
                         String nomorWA = nilai(doc, "whatsapp");
                         String plat = nilai(doc, "nopol");
@@ -465,6 +654,7 @@ public class MainActivity extends Activity {
                                 "\nStatus: " + status
                         );
                         informasi.setTextSize(16);
+
                         kartu.addView(informasi);
 
                         boolean sudahTerkirim =
@@ -472,14 +662,15 @@ public class MainActivity extends Activity {
                                 || "SUDAH TERKIRIM".equalsIgnoreCase(status);
 
                         if (sudahTerkirim) {
+
                             Button hapus = new Button(this);
                             hapus.setText("HAPUS RIWAYAT");
                             hapus.setTextColor(Color.WHITE);
+
                             hapus.setBackgroundTintList(
                                     android.content.res.ColorStateList.valueOf(
-                                            Color.rgb(190, 35, 35)
-                                    )
-                            );
+                                            Color.rgb(190, 35, 35)));
+
                             kartu.addView(hapus);
 
                             hapus.setOnClickListener(v ->
@@ -489,22 +680,24 @@ public class MainActivity extends Activity {
                                                     "Hapus riwayat pelanggan " +
                                                     namaPelanggan +
                                                     " dari Firebase? Data yang " +
-                                                    "dihapus tidak dapat dikembalikan."
-                                            )
+                                                    "dihapus tidak dapat dikembalikan.")
                                             .setNegativeButton("BATAL", null)
-                                            .setPositiveButton("HAPUS",
+                                            .setPositiveButton(
+                                                    "HAPUS",
                                                     (dialog, which) ->
                                                             hapusRiwayat(doc.getId()))
-                                            .show()
-                            );
+                                            .show());
 
                         } else {
+
                             Button tandai = new Button(this);
                             tandai.setText("TANDAI SUDAH TERKIRIM");
                             tandai.setTextColor(Color.WHITE);
+
                             tandai.setBackgroundTintList(
-                                    android.content.res.ColorStateList.valueOf(HIJAU)
-                            );
+                                    android.content.res.ColorStateList.valueOf(
+                                            HIJAU));
+
                             kartu.addView(tandai);
 
                             tandai.setOnClickListener(v ->
@@ -513,21 +706,23 @@ public class MainActivity extends Activity {
                                             .setMessage(
                                                     "Apakah reminder pelanggan " +
                                                     namaPelanggan +
-                                                    " benar-benar sudah terkirim?"
-                                            )
+                                                    " benar-benar sudah terkirim?")
                                             .setNegativeButton("BELUM", null)
-                                            .setPositiveButton("SUDAH TERKIRIM",
+                                            .setPositiveButton(
+                                                    "SUDAH TERKIRIM",
                                                     (dialog, which) ->
                                                             tandaiTerkirim(doc.getId()))
-                                            .show()
-                            );
+                                            .show());
                         }
 
                         daftar.addView(kartu);
 
                         View garis = new View(this);
                         garis.setBackgroundColor(Color.LTGRAY);
-                        daftar.addView(garis, new LinearLayout.LayoutParams(-1, 2));
+
+                        daftar.addView(
+                                garis,
+                                new LinearLayout.LayoutParams(-1, 2));
                     }
 
                     new AlertDialog.Builder(this)
@@ -550,6 +745,7 @@ public class MainActivity extends Activity {
                 .document(documentId)
                 .update("status", "TERKIRIM")
                 .addOnSuccessListener(unused -> {
+                    ReminderReceiver.batalkan(this, documentId);
                     pesan("Status berhasil diubah menjadi TERKIRIM.");
                     riwayat();
                 })
@@ -567,6 +763,7 @@ public class MainActivity extends Activity {
                 .document(documentId)
                 .get()
                 .addOnSuccessListener(doc -> {
+
                     if (!doc.exists()) {
                         pesan("Riwayat tidak ditemukan.");
                         return;
@@ -593,6 +790,9 @@ public class MainActivity extends Activity {
                             .document(documentId)
                             .delete()
                             .addOnSuccessListener(unused -> {
+                                ReminderReceiver.batalkan(
+                                        this, documentId);
+
                                 pesan("Riwayat berhasil dihapus.");
                                 riwayat();
                             })
@@ -606,7 +806,10 @@ public class MainActivity extends Activity {
 
     private String nilai(DocumentSnapshot doc, String kolom) {
         String value = doc.getString(kolom);
-        return value == null || value.trim().isEmpty() ? "-" : value;
+
+        return value == null || value.trim().isEmpty()
+                ? "-"
+                : value;
     }
 
     private void pesan(String teks) {
