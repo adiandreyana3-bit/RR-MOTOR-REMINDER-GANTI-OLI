@@ -7,10 +7,10 @@ import android.app.DatePickerDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -99,7 +99,8 @@ public class MainActivity extends Activity {
 
         if (requestCode == IZIN_NOTIFIKASI) {
             if (grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    && grantResults[0]
+                    == PackageManager.PERMISSION_GRANTED) {
 
                 Toast.makeText(
                         this,
@@ -298,7 +299,7 @@ public class MainActivity extends Activity {
 
         layout.addView(interval);
 
-        tambahLabel("Jenis motor untuk perhitungan KM:");
+        tambahLabel("Jenis motor:");
 
         jenisMotor = new Spinner(this);
 
@@ -320,6 +321,7 @@ public class MainActivity extends Activity {
 
         tombol("PERIKSA JADWAL NOTIFIKASI", () -> {
             periksaDanJadwalkanReminder();
+
             pesan(
                     "Pemeriksaan jadwal dimulai. " +
                     "Pastikan internet dan izin notifikasi aktif."
@@ -466,14 +468,25 @@ public class MainActivity extends Activity {
             return;
         }
 
+        String namaPelanggan = nama.getText().toString().trim();
         String nomor = wa.getText().toString().trim();
+        String plat = nopol.getText().toString().trim();
+        String nomorMesin = mesin.getText().toString().trim();
+        String kilometer = km.getText().toString().trim();
+        String intervalPilihan = interval.getSelectedItem().toString();
+        String motor = jenisMotor.getSelectedItem().toString();
 
         if (nomor.isEmpty()) {
             pesan("Nomor WhatsApp wajib diisi.");
             return;
         }
 
-        String kilometer = km.getText().toString().trim();
+        String nomorAngka = nomor.replaceAll("[^0-9]", "");
+
+        if (nomorAngka.length() < 9 || nomorAngka.length() > 15) {
+            pesan("Periksa kembali nomor WhatsApp pelanggan.");
+            return;
+        }
 
         if (!kilometer.isEmpty()) {
             try {
@@ -487,11 +500,8 @@ public class MainActivity extends Activity {
             }
         }
 
-        Calendar tanggalDasar =
-                (Calendar) tanggalDipilih.clone();
-
-        Calendar jatuhTempo =
-                (Calendar) tanggalDasar.clone();
+        Calendar tanggalDasar = (Calendar) tanggalDipilih.clone();
+        Calendar jatuhTempo = (Calendar) tanggalDasar.clone();
 
         int pilihan = interval.getSelectedItemPosition();
 
@@ -513,13 +523,13 @@ public class MainActivity extends Activity {
         Map<String, Object> data = new HashMap<>();
 
         data.put("uid", auth.getCurrentUser().getUid());
-        data.put("nama", nama.getText().toString().trim());
+        data.put("nama", namaPelanggan);
         data.put("whatsapp", nomor);
-        data.put("nopol", nopol.getText().toString().trim());
-        data.put("nomorMesin", mesin.getText().toString().trim());
+        data.put("nopol", plat);
+        data.put("nomorMesin", nomorMesin);
         data.put("kmTerakhir", kilometer);
-        data.put("interval", interval.getSelectedItem().toString());
-        data.put("jenisMotor", jenisMotor.getSelectedItem().toString());
+        data.put("interval", intervalPilihan);
+        data.put("jenisMotor", motor);
         data.put("tanggalInput", tanggalInput);
         data.put("jatuhTempo", tanggalTempo);
         data.put("status", "BELUM TERKIRIM");
@@ -543,9 +553,15 @@ public class MainActivity extends Activity {
                     ReminderReceiver.jadwalkan(
                             MainActivity.this,
                             ref.getId(),
-                            nama.getText().toString().trim(),
-                            nopol.getText().toString().trim(),
+                            namaPelanggan,
+                            plat,
                             nomor,
+                            nomorMesin,
+                            kilometer,
+                            intervalPilihan,
+                            motor,
+                            tanggalInput,
+                            tanggalTempo,
                             waktuNotifikasi.getTimeInMillis()
                     );
 
@@ -555,6 +571,7 @@ public class MainActivity extends Activity {
                                     "Data pelanggan berhasil disimpan.\n\n" +
                                     "Tanggal input: " + tanggalInput +
                                     "\nJatuh tempo: " + tanggalTempo +
+                                    "\nInterval: " + intervalPilihan +
                                     "\nNotifikasi dijadwalkan pukul 09.00."
                             )
                             .setPositiveButton(
@@ -586,6 +603,8 @@ public class MainActivity extends Activity {
                         if ("TERKIRIM".equalsIgnoreCase(status)
                                 || "SUDAH TERKIRIM".equalsIgnoreCase(status)) {
 
+                            // Batalkan alarm, tetapi jangan hapus status
+                            // done_ID agar alarm lama tidak dibuat ulang.
                             ReminderReceiver.batalkan(
                                     MainActivity.this,
                                     doc.getId());
@@ -599,16 +618,12 @@ public class MainActivity extends Activity {
                             continue;
                         }
 
-                        String nomorWA = doc.getString("whatsapp");
-
                         try {
-                            Date tanggalParsed =
-                                    formatTanggal.parse(tanggal);
+                            Date tanggalParsed = formatTanggal.parse(tanggal);
 
                             if (tanggalParsed == null) continue;
 
                             Calendar waktu = Calendar.getInstance();
-
                             waktu.setTime(tanggalParsed);
 
                             waktu.set(Calendar.HOUR_OF_DAY, 9);
@@ -621,7 +636,13 @@ public class MainActivity extends Activity {
                                     doc.getId(),
                                     doc.getString("nama"),
                                     doc.getString("nopol"),
-                                    nomorWA,
+                                    doc.getString("whatsapp"),
+                                    doc.getString("nomorMesin"),
+                                    doc.getString("kmTerakhir"),
+                                    doc.getString("interval"),
+                                    doc.getString("jenisMotor"),
+                                    doc.getString("tanggalInput"),
+                                    doc.getString("jatuhTempo"),
                                     waktu.getTimeInMillis()
                             );
 
@@ -680,7 +701,6 @@ public class MainActivity extends Activity {
                         String status = nilai(doc, "status");
 
                         LinearLayout kartu = new LinearLayout(this);
-
                         kartu.setOrientation(LinearLayout.VERTICAL);
                         kartu.setPadding(12, 12, 12, 20);
 
@@ -696,7 +716,6 @@ public class MainActivity extends Activity {
                         );
 
                         informasi.setTextSize(16);
-
                         kartu.addView(informasi);
 
                         boolean sudahTerkirim =
@@ -762,7 +781,6 @@ public class MainActivity extends Activity {
                         daftar.addView(kartu);
 
                         View garis = new View(this);
-
                         garis.setBackgroundColor(Color.LTGRAY);
 
                         daftar.addView(
