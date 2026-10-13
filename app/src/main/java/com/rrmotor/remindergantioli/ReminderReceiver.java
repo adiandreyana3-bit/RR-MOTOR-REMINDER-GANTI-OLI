@@ -78,8 +78,8 @@ public class ReminderReceiver extends BroadcastReceiver {
                 "Pengecekan oli GRATIS.\n\n" +
                 "Terima kasih telah mempercayakan perawatan motor Anda kepada RR MOTOR.";
 
-        Intent bukaWA;
         String nomor = normalisasiNomor(whatsapp);
+        Intent bukaWA;
 
         if (!nomor.isEmpty()) {
             String url = "https://wa.me/" + nomor
@@ -139,7 +139,7 @@ public class ReminderReceiver extends BroadcastReceiver {
         manager.notify(id.hashCode(), notification);
 
         // Menandai notifikasi sudah ditampilkan,
-        // bukan berarti WhatsApp sudah dikirim.
+        // bukan berarti pesan WhatsApp sudah terkirim.
         prefs.edit()
                 .putBoolean("done_" + id, true)
                 .apply();
@@ -194,17 +194,21 @@ public class ReminderReceiver extends BroadcastReceiver {
             Log.e(TAG, "Gagal menyimpan jadwal reminder.", e);
         }
 
-        Intent intent = new Intent(context, ReminderReceiver.class);
+        Intent alarmIntentAction = new Intent(
+                context, ReminderReceiver.class
+        );
 
-        intent.putExtra("id", id);
-        intent.putExtra("nama", nama == null ? "" : nama);
-        intent.putExtra("nopol", nopol == null ? "" : nopol);
-        intent.putExtra("whatsapp", whatsapp == null ? "" : whatsapp);
+        alarmIntentAction.putExtra("id", id);
+        alarmIntentAction.putExtra("nama", nama == null ? "" : nama);
+        alarmIntentAction.putExtra("nopol", nopol == null ? "" : nopol);
+        alarmIntentAction.putExtra(
+                "whatsapp", whatsapp == null ? "" : whatsapp
+        );
 
         PendingIntent alarmIntent = PendingIntent.getBroadcast(
                 context,
                 id.hashCode(),
-                intent,
+                alarmIntentAction,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE
         );
@@ -243,4 +247,74 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         Intent intent = new Intent(context, ReminderReceiver.class);
 
-        PendingIntent alarmIntent = PendingIntent.get
+        PendingIntent alarmIntent = PendingIntent.getBroadcast(
+                context,
+                id.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT
+                        | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        AlarmManager alarmManager =
+                (AlarmManager) context.getSystemService(
+                        Context.ALARM_SERVICE
+                );
+
+        if (alarmManager != null) {
+            alarmManager.cancel(alarmIntent);
+        }
+
+        SharedPreferences prefs = context.getSharedPreferences(
+                PREFS, Context.MODE_PRIVATE
+        );
+
+        prefs.edit()
+                .remove("reminder_" + id)
+                .remove("wa_" + id)
+                .remove("done_" + id)
+                .apply();
+    }
+
+    public static void buatChannel(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "Reminder Ganti Oli RR MOTOR",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+
+            channel.setDescription(
+                    "Pengingat jadwal ganti oli pelanggan RR MOTOR"
+            );
+
+            channel.enableVibration(true);
+
+            NotificationManager manager =
+                    (NotificationManager) context.getSystemService(
+                            Context.NOTIFICATION_SERVICE
+                    );
+
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    private static String normalisasiNomor(String nomor) {
+        if (nomor == null) {
+            return "";
+        }
+
+        nomor = nomor.replaceAll("[^0-9]", "");
+
+        if (nomor.isEmpty()) {
+            return "";
+        }
+
+        if (nomor.startsWith("0")) {
+            nomor = "62" + nomor.substring(1);
+        }
+
+        return nomor;
+    }
+}
