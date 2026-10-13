@@ -25,15 +25,22 @@ public class ReminderReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null) return;
+        if (intent == null) {
+            return;
+        }
 
-        String id = intent.getStringExtra("id");
-        if (id == null || id.trim().isEmpty()) return;
+        String id = ambil(intent, "id");
+
+        if (id.isEmpty()) {
+            return;
+        }
 
         SharedPreferences prefs = context.getSharedPreferences(
                 PREFS, Context.MODE_PRIVATE);
 
-        if (prefs.getBoolean("done_" + id, false)) return;
+        if (prefs.getBoolean("done_" + id, false)) {
+            return;
+        }
 
         String nama = ambil(intent, "nama");
         String nopol = ambil(intent, "nopol");
@@ -53,6 +60,7 @@ public class ReminderReceiver extends BroadcastReceiver {
                 && context.checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
+
             Log.e(TAG, "Izin notifikasi belum diberikan.");
             return;
         }
@@ -75,14 +83,15 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         if (!nama.isEmpty()) {
             pesan.append("Halo Bapak/Ibu ")
-                    .append(nama).append(".\n\n");
+                    .append(nama)
+                    .append(".\n\n");
         } else {
             pesan.append("Halo Bapak/Ibu.\n\n");
         }
 
         pesan.append(
-                "Kami mengingatkan bahwa sudah waktunya " +
-                "melakukan pengecekan atau penggantian oli motor.\n\n");
+                "Kami mengingatkan bahwa sudah waktunya "
+                        + "melakukan pengecekan atau penggantian oli motor.\n\n");
 
         tambahBaris(pesan, "Nama pelanggan", nama);
         tambahBaris(pesan, "Nomor polisi", nopol);
@@ -95,17 +104,20 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         pesan.append("\nPengecekan oli GRATIS.\n\n");
         pesan.append(
-                "Terima kasih telah mempercayakan perawatan " +
-                "motor Anda kepada RR MOTOR.");
+                "Terima kasih telah mempercayakan perawatan "
+                        + "motor Anda kepada RR MOTOR.");
 
         String nomor = normalisasiNomor(whatsapp);
+
         Intent bukaWA;
 
         if (!nomor.isEmpty()) {
             String url = "https://wa.me/" + nomor
                     + "?text=" + Uri.encode(pesan.toString());
 
-            bukaWA = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            bukaWA = new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(url));
         } else {
             bukaWA = new Intent(context, MainActivity.class);
         }
@@ -141,7 +153,8 @@ public class ReminderReceiver extends BroadcastReceiver {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("RR MOTOR - Reminder Ganti Oli")
                 .setContentText(isi)
-                .setStyle(new Notification.BigTextStyle().bigText(isi))
+                .setStyle(
+                        new Notification.BigTextStyle().bigText(isi))
                 .setContentIntent(klikNotifikasi)
                 .setAutoCancel(true)
                 .setPriority(Notification.PRIORITY_HIGH)
@@ -149,9 +162,11 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         manager.notify(id.hashCode(), notification);
 
-        // Notifikasi sudah ditampilkan.
-        // Ini bukan tanda bahwa WhatsApp sudah terkirim.
-        prefs.edit().putBoolean("done_" + id, true).apply();
+        // Menandai notifikasi sudah ditampilkan,
+        // bukan berarti pesan WhatsApp sudah terkirim.
+        prefs.edit()
+                .putBoolean("done_" + id, true)
+                .apply();
 
         Log.d(TAG, "Notifikasi ditampilkan untuk ID: " + id);
     }
@@ -162,11 +177,14 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     private static void tambahBaris(
-            StringBuilder pesan, String label, String nilai) {
+            StringBuilder pesan,
+            String label,
+            String nilai) {
 
         if (nilai != null
                 && !nilai.trim().isEmpty()
                 && !"-".equals(nilai.trim())) {
+
             pesan.append(label)
                     .append(": ")
                     .append(nilai.trim())
@@ -174,6 +192,7 @@ public class ReminderReceiver extends BroadcastReceiver {
         }
     }
 
+    // Fungsi jadwalkan versi lama untuk kompatibilitas.
     public static void jadwalkan(
             Context context,
             String id,
@@ -183,10 +202,22 @@ public class ReminderReceiver extends BroadcastReceiver {
             long waktu) {
 
         jadwalkan(
-                context, id, nama, nopol, whatsapp,
-                "", "", "", "", "", waktu);
+                context,
+                id,
+                nama,
+                nopol,
+                whatsapp,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                waktu
+        );
     }
 
+    // Fungsi jadwalkan dengan seluruh data pelanggan.
     public static void jadwalkan(
             Context context,
             String id,
@@ -201,12 +232,16 @@ public class ReminderReceiver extends BroadcastReceiver {
             String jatuhTempo,
             long waktu) {
 
-        if (id == null || id.trim().isEmpty()) return;
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
 
         SharedPreferences prefs = context.getSharedPreferences(
                 PREFS, Context.MODE_PRIVATE);
 
-        if (prefs.getBoolean("done_" + id, false)) return;
+        if (prefs.getBoolean("done_" + id, false)) {
+            return;
+        }
 
         if (waktu <= System.currentTimeMillis()) {
             waktu = System.currentTimeMillis() + 60_000L;
@@ -282,9 +317,12 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     public static void batalkan(Context context, String id) {
-        if (id == null || id.trim().isEmpty()) return;
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
 
-        Intent intent = new Intent(context, ReminderReceiver.class);
+        Intent intent = new Intent(
+                context, ReminderReceiver.class);
 
         PendingIntent alarmIntent = PendingIntent.getBroadcast(
                 context,
@@ -304,8 +342,7 @@ public class ReminderReceiver extends BroadcastReceiver {
         SharedPreferences prefs = context.getSharedPreferences(
                 PREFS, Context.MODE_PRIVATE);
 
-        // Jangan menghapus done_ID di sini.
-        // Status selesai perlu dikelola secara terpisah.
+        // Status done_ID sengaja tidak dihapus di sini.
         prefs.edit()
                 .remove("reminder_" + id)
                 .remove("wa_" + id)
@@ -343,11 +380,15 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     private static String normalisasiNomor(String nomor) {
-        if (nomor == null) return "";
+        if (nomor == null) {
+            return "";
+        }
 
         nomor = nomor.replaceAll("[^0-9]", "");
 
-        if (nomor.isEmpty()) return "";
+        if (nomor.isEmpty()) {
+            return "";
+        }
 
         if (nomor.startsWith("0")) {
             nomor = "62" + nomor.substring(1);
