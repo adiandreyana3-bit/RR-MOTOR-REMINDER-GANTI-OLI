@@ -30,6 +30,7 @@ import java.util.Date;
 public class MainActivity extends Activity {
 
     private final int HIJAU = Color.rgb(20, 130, 65);
+
     private static final int PILIH_KONTAK = 1001;
     private static final int IZIN_NOTIFIKASI = 2001;
 
@@ -37,12 +38,15 @@ public class MainActivity extends Activity {
     private FirebaseFirestore db;
 
     private LinearLayout layout;
+
     private EditText email, password;
     private EditText nama, wa, nopol, mesin, km;
     private EditText tanggalInputView;
+
     private Spinner interval, jenisMotor;
 
     private Calendar tanggalDipilih = Calendar.getInstance();
+
     private boolean sedangMenyimpan = false;
 
     private final SimpleDateFormat formatTanggal =
@@ -55,8 +59,11 @@ public class MainActivity extends Activity {
         formatTanggal.setLenient(false);
 
         FirebaseApp.initializeApp(this);
+
         auth = FirebaseAuth.getInstance();
         db = FirebaseFirestore.getInstance();
+
+        ReminderReceiver.buatChannel(this);
 
         if (auth.getCurrentUser() == null) {
             tampilkanLogin();
@@ -105,7 +112,7 @@ public class MainActivity extends Activity {
             } else {
                 Toast.makeText(
                         this,
-                        "Izin notifikasi belum diberikan. Aktifkan di pengaturan aplikasi.",
+                        "Aktifkan izin notifikasi di Pengaturan HP.",
                         Toast.LENGTH_LONG
                 ).show();
             }
@@ -121,11 +128,13 @@ public class MainActivity extends Activity {
         layout.setBackgroundColor(Color.WHITE);
 
         scroll.addView(layout);
+
         setContentView(scroll);
     }
 
     private void judul(String teks) {
         TextView t = new TextView(this);
+
         t.setText(teks);
         t.setTextSize(23);
         t.setTextColor(HIJAU);
@@ -138,6 +147,7 @@ public class MainActivity extends Activity {
 
     private EditText input(String hint) {
         EditText e = new EditText(this);
+
         e.setHint(hint);
         e.setTextSize(16);
         e.setSingleLine(true);
@@ -151,8 +161,10 @@ public class MainActivity extends Activity {
 
     private Button tombol(String teks, Runnable aksi) {
         Button b = new Button(this);
+
         b.setText(teks);
         b.setTextColor(Color.WHITE);
+
         b.setBackgroundTintList(
                 android.content.res.ColorStateList.valueOf(HIJAU));
 
@@ -167,6 +179,7 @@ public class MainActivity extends Activity {
 
     private void tampilkanLogin() {
         buatLayout();
+
         judul("🏍️ RR MOTOR\nREMINDER GANTI OLI");
 
         email = input("Email");
@@ -179,10 +192,12 @@ public class MainActivity extends Activity {
         tombol("DAFTAR AKUN BARU", this::daftar);
 
         TextView info = new TextView(this);
+
         info.setText(
                 "Gunakan email dan password milik Anda sendiri. " +
                 "Akun diperlukan untuk menyimpan riwayat pelanggan."
         );
+
         info.setPadding(0, 20, 0, 0);
 
         layout.addView(info);
@@ -211,7 +226,8 @@ public class MainActivity extends Activity {
         String p = password.getText().toString();
 
         if (e.isEmpty() || p.length() < 6) {
-            pesan("Isi email yang benar dan password minimal 6 karakter.");
+            pesan(
+                    "Isi email yang benar dan password minimal 6 karakter.");
             return;
         }
 
@@ -230,12 +246,16 @@ public class MainActivity extends Activity {
         judul("🏍️ RR MOTOR\nREMINDER GANTI OLI");
 
         TextView akun = new TextView(this);
-        akun.setText("Login: " + auth.getCurrentUser().getEmail());
+
+        akun.setText(
+                "Login: " + auth.getCurrentUser().getEmail());
+
         layout.addView(akun);
 
         tambahLabel("Tanggal input data:");
 
         tanggalInputView = input("Pilih tanggal input");
+
         tanggalDipilih = Calendar.getInstance();
 
         tanggalInputView.setText(
@@ -243,6 +263,7 @@ public class MainActivity extends Activity {
 
         tanggalInputView.setFocusable(false);
         tanggalInputView.setClickable(true);
+
         tanggalInputView.setOnClickListener(v -> pilihTanggal());
 
         tombol("📅 PILIH TANGGAL", this::pilihTanggal);
@@ -255,6 +276,7 @@ public class MainActivity extends Activity {
         tombol("📱 PILIH KONTAK", this::bukaKontak);
 
         nopol = input("Nomor polisi / plat motor (opsional)");
+
         mesin = input("Nomor mesin (opsional)");
 
         km = input("KM terakhir (opsional)");
@@ -263,6 +285,7 @@ public class MainActivity extends Activity {
         tambahLabel("Interval pengingat:");
 
         interval = new Spinner(this);
+
         interval.setAdapter(new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -272,11 +295,13 @@ public class MainActivity extends Activity {
                         "2 BULAN"
                 }
         ));
+
         layout.addView(interval);
 
         tambahLabel("Jenis motor untuk perhitungan KM:");
 
         jenisMotor = new Spinner(this);
+
         jenisMotor.setAdapter(new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -286,10 +311,20 @@ public class MainActivity extends Activity {
                         "Motor ojek"
                 }
         ));
+
         layout.addView(jenisMotor);
 
         tombol("SIMPAN DATA", this::simpanData);
+
         tombol("RIWAYAT REMINDER", this::riwayat);
+
+        tombol("PERIKSA JADWAL NOTIFIKASI", () -> {
+            periksaDanJadwalkanReminder();
+            pesan(
+                    "Pemeriksaan jadwal dimulai. " +
+                    "Pastikan internet dan izin notifikasi aktif."
+            );
+        });
 
         tombol("KELUAR AKUN", () -> {
             new AlertDialog.Builder(this)
@@ -303,7 +338,6 @@ public class MainActivity extends Activity {
                     .show();
         });
 
-        // Memeriksa data lama dan menjadwalkan notifikasi.
         periksaDanJadwalkanReminder();
     }
 
@@ -414,6 +448,7 @@ public class MainActivity extends Activity {
 
     private void tambahLabel(String teks) {
         TextView t = new TextView(this);
+
         t.setText(teks);
         t.setTextSize(15);
         t.setTextColor(Color.DKGRAY);
@@ -462,11 +497,9 @@ public class MainActivity extends Activity {
 
         if (pilihan == 0) {
             jatuhTempo.add(Calendar.MONTH, 1);
-
         } else if (pilihan == 1) {
             jatuhTempo.add(Calendar.MONTH, 1);
             jatuhTempo.add(Calendar.DAY_OF_MONTH, 15);
-
         } else {
             jatuhTempo.add(Calendar.MONTH, 2);
         }
@@ -512,6 +545,7 @@ public class MainActivity extends Activity {
                             ref.getId(),
                             nama.getText().toString().trim(),
                             nopol.getText().toString().trim(),
+                            nomor,
                             waktuNotifikasi.getTimeInMillis()
                     );
 
@@ -530,14 +564,14 @@ public class MainActivity extends Activity {
                 })
                 .addOnFailureListener(error -> {
                     sedangMenyimpan = false;
-                    pesan("Gagal menyimpan data: " + error.getMessage());
+
+                    pesan("Gagal menyimpan data: "
+                            + error.getMessage());
                 });
     }
 
     private void periksaDanJadwalkanReminder() {
-        if (auth.getCurrentUser() == null) {
-            return;
-        }
+        if (auth.getCurrentUser() == null) return;
 
         db.collection("reminders")
                 .whereEqualTo(
@@ -565,16 +599,18 @@ public class MainActivity extends Activity {
                             continue;
                         }
 
+                        String nomorWA = doc.getString("whatsapp");
+
                         try {
                             Date tanggalParsed =
                                     formatTanggal.parse(tanggal);
 
-                            if (tanggalParsed == null) {
-                                continue;
-                            }
+                            if (tanggalParsed == null) continue;
 
                             Calendar waktu = Calendar.getInstance();
+
                             waktu.setTime(tanggalParsed);
+
                             waktu.set(Calendar.HOUR_OF_DAY, 9);
                             waktu.set(Calendar.MINUTE, 0);
                             waktu.set(Calendar.SECOND, 0);
@@ -585,6 +621,7 @@ public class MainActivity extends Activity {
                                     doc.getId(),
                                     doc.getString("nama"),
                                     doc.getString("nopol"),
+                                    nomorWA,
                                     waktu.getTimeInMillis()
                             );
 
@@ -626,8 +663,10 @@ public class MainActivity extends Activity {
 
                     if (snapshot.isEmpty()) {
                         TextView kosong = new TextView(this);
+
                         kosong.setText("Belum ada riwayat reminder.");
                         kosong.setTextSize(16);
+
                         daftar.addView(kosong);
                     }
 
@@ -641,10 +680,12 @@ public class MainActivity extends Activity {
                         String status = nilai(doc, "status");
 
                         LinearLayout kartu = new LinearLayout(this);
+
                         kartu.setOrientation(LinearLayout.VERTICAL);
                         kartu.setPadding(12, 12, 12, 20);
 
                         TextView informasi = new TextView(this);
+
                         informasi.setText(
                                 "Nama: " + namaPelanggan +
                                 "\nWA: " + nomorWA +
@@ -653,6 +694,7 @@ public class MainActivity extends Activity {
                                 "\nJatuh tempo: " + tempo +
                                 "\nStatus: " + status
                         );
+
                         informasi.setTextSize(16);
 
                         kartu.addView(informasi);
@@ -664,6 +706,7 @@ public class MainActivity extends Activity {
                         if (sudahTerkirim) {
 
                             Button hapus = new Button(this);
+
                             hapus.setText("HAPUS RIWAYAT");
                             hapus.setTextColor(Color.WHITE);
 
@@ -691,6 +734,7 @@ public class MainActivity extends Activity {
                         } else {
 
                             Button tandai = new Button(this);
+
                             tandai.setText("TANDAI SUDAH TERKIRIM");
                             tandai.setTextColor(Color.WHITE);
 
@@ -718,6 +762,7 @@ public class MainActivity extends Activity {
                         daftar.addView(kartu);
 
                         View garis = new View(this);
+
                         garis.setBackgroundColor(Color.LTGRAY);
 
                         daftar.addView(
@@ -732,7 +777,8 @@ public class MainActivity extends Activity {
                             .show();
                 })
                 .addOnFailureListener(error ->
-                        pesan("Gagal membuka riwayat: " + error.getMessage()));
+                        pesan("Gagal membuka riwayat: "
+                                + error.getMessage()));
     }
 
     private void tandaiTerkirim(String documentId) {
@@ -746,11 +792,14 @@ public class MainActivity extends Activity {
                 .update("status", "TERKIRIM")
                 .addOnSuccessListener(unused -> {
                     ReminderReceiver.batalkan(this, documentId);
+
                     pesan("Status berhasil diubah menjadi TERKIRIM.");
+
                     riwayat();
                 })
                 .addOnFailureListener(error ->
-                        pesan("Gagal mengubah status: " + error.getMessage()));
+                        pesan("Gagal mengubah status: "
+                                + error.getMessage()));
     }
 
     private void hapusRiwayat(String documentId) {
@@ -794,14 +843,16 @@ public class MainActivity extends Activity {
                                         this, documentId);
 
                                 pesan("Riwayat berhasil dihapus.");
+
                                 riwayat();
                             })
                             .addOnFailureListener(error ->
-                                    pesan("Gagal menghapus riwayat: " +
-                                            error.getMessage()));
+                                    pesan("Gagal menghapus riwayat: "
+                                            + error.getMessage()));
                 })
                 .addOnFailureListener(error ->
-                        pesan("Gagal memeriksa riwayat: " + error.getMessage()));
+                        pesan("Gagal memeriksa riwayat: "
+                                + error.getMessage()));
     }
 
     private String nilai(DocumentSnapshot doc, String kolom) {
