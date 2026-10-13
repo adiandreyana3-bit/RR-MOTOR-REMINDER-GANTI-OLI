@@ -46,17 +46,14 @@ public class ReminderReceiver extends BroadcastReceiver {
             return;
         }
 
-        // Ambil nomor WhatsApp yang tersimpan.
         if (whatsapp == null || whatsapp.trim().isEmpty()) {
             whatsapp = prefs.getString("wa_" + id, "");
         }
 
-        // Periksa izin notifikasi Android.
         if (Build.VERSION.SDK_INT >= 33
                 && context.checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-
             Log.e(TAG, "Izin notifikasi belum diberikan.");
             return;
         }
@@ -73,7 +70,6 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         buatChannel(context);
 
-        // Pesan WhatsApp untuk pelanggan.
         String pesanWA =
                 "🏍️ RR MOTOR\n\n" +
                 "Halo Bapak/Ibu.\n\n" +
@@ -82,9 +78,7 @@ public class ReminderReceiver extends BroadcastReceiver {
                 "Pengecekan oli GRATIS.\n\n" +
                 "Terima kasih telah mempercayakan perawatan motor Anda kepada RR MOTOR.";
 
-        // Siapkan tujuan ketika notifikasi ditekan.
         Intent bukaWA;
-
         String nomor = normalisasiNomor(whatsapp);
 
         if (!nomor.isEmpty()) {
@@ -112,7 +106,6 @@ public class ReminderReceiver extends BroadcastReceiver {
                         | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // Isi notifikasi.
         String isi = "Saatnya mengingatkan pelanggan untuk ganti oli.";
 
         if (nama != null && !nama.trim().isEmpty()) {
@@ -135,17 +128,18 @@ public class ReminderReceiver extends BroadcastReceiver {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("RR MOTOR - Waktunya Ganti Oli")
                 .setContentText(isi)
-                .setStyle(new Notification.BigTextStyle().bigText(isi))
+                .setStyle(
+                        new Notification.BigTextStyle().bigText(isi)
+                )
                 .setContentIntent(klikNotifikasi)
                 .setAutoCancel(true)
                 .setPriority(Notification.PRIORITY_HIGH)
                 .build();
 
-        // Tampilkan notifikasi.
         manager.notify(id.hashCode(), notification);
 
-        // Tandai notifikasi sudah ditampilkan agar tidak berulang.
-        // Ini bukan tanda bahwa pesan WhatsApp sudah dikirim.
+        // Menandai notifikasi sudah ditampilkan,
+        // bukan berarti WhatsApp sudah dikirim.
         prefs.edit()
                 .putBoolean("done_" + id, true)
                 .apply();
@@ -169,19 +163,16 @@ public class ReminderReceiver extends BroadcastReceiver {
                 PREFS, Context.MODE_PRIVATE
         );
 
-        // Jangan menjadwalkan ulang notifikasi yang sudah ditampilkan.
         if (prefs.getBoolean("done_" + id, false)) {
             return;
         }
 
-        // Jika tanggal sudah lewat, jadwalkan satu menit dari sekarang.
         long sekarang = System.currentTimeMillis();
 
         if (waktu <= sekarang) {
             waktu = sekarang + 60_000L;
         }
 
-        // Simpan data agar jadwal bisa dipulihkan setelah HP restart.
         try {
             JSONObject data = new JSONObject();
 
@@ -193,7 +184,10 @@ public class ReminderReceiver extends BroadcastReceiver {
 
             prefs.edit()
                     .putString("reminder_" + id, data.toString())
-                    .putString("wa_" + id, whatsapp == null ? "" : whatsapp)
+                    .putString(
+                            "wa_" + id,
+                            whatsapp == null ? "" : whatsapp
+                    )
                     .apply();
 
         } catch (Exception e) {
@@ -239,7 +233,7 @@ public class ReminderReceiver extends BroadcastReceiver {
             );
         }
 
-        Log.d(TAG, "Jadwal reminder berhasil dibuat: " + id);
+        Log.d(TAG, "Jadwal reminder dibuat: " + id);
     }
 
     public static void batalkan(Context context, String id) {
@@ -249,80 +243,4 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         Intent intent = new Intent(context, ReminderReceiver.class);
 
-        PendingIntent alarmIntent = PendingIntent.getBroadcast(
-                context,
-                id.hashCode(),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-                        | PendingIntent.FLAG_IMMUTABLE
-        );
-
-        AlarmManager alarmManager =
-                (AlarmManager) context.getSystemService(
-                        Context.ALARM_SERVICE
-                );
-
-        if (alarmManager != null) {
-            alarmManager.cancel(alarmIntent);
-        }
-
-        SharedPreferences prefs = context.getSharedPreferences(
-                PREFS, Context.MODE_PRIVATE
-        );
-
-        prefs.edit()
-                .remove("reminder_" + id)
-                .remove("wa_" + id)
-                .remove("done_" + id)
-                .apply();
-    }
-
-    private static void buatChannel(Context context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Reminder Ganti Oli RR MOTOR",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
-
-            channel.setDescription(
-                    "Pengingat jadwal ganti oli pelanggan RR MOTOR"
-            );
-
-            channel.enableVibration(true);
-
-            NotificationManager manager =
-                    (NotificationManager) context.getSystemService(
-                            Context.NOTIFICATION_SERVICE
-                    );
-
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
-        }
-    }
-
-    private static String normalisasiNomor(String nomor) {
-        if (nomor == null) {
-            return "";
-        }
-
-        // Buang spasi, tanda tambah, tanda hubung, dan karakter lainnya.
-        nomor = nomor.replaceAll("[^0-9]", "");
-
-        if (nomor.isEmpty()) {
-            return "";
-        }
-
-        // Ubah awalan 0 menjadi kode negara Indonesia 62.
-        if (nomor.startsWith("0")) {
-            nomor = "62" + nomor.substring(1);
-        }
-
-        // Jika nomor sudah memakai kode negara 62, biarkan.
-        // Jika pengguna memasukkan nomor tanpa kode negara,
-        // hasilnya perlu diperiksa sebelum digunakan.
-
-        return nomor;
-    }
-}
+        PendingIntent alarmIntent = PendingIntent.get
