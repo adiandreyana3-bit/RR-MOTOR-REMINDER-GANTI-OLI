@@ -25,28 +25,27 @@ public class ReminderReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null) {
-            return;
-        }
+        if (intent == null) return;
 
         String id = intent.getStringExtra("id");
-        String nama = intent.getStringExtra("nama");
-        String nopol = intent.getStringExtra("nopol");
-        String whatsapp = intent.getStringExtra("whatsapp");
-
-        if (id == null || id.trim().isEmpty()) {
-            return;
-        }
+        if (id == null || id.trim().isEmpty()) return;
 
         SharedPreferences prefs = context.getSharedPreferences(
-                PREFS, Context.MODE_PRIVATE
-        );
+                PREFS, Context.MODE_PRIVATE);
 
-        if (prefs.getBoolean("done_" + id, false)) {
-            return;
-        }
+        if (prefs.getBoolean("done_" + id, false)) return;
 
-        if (whatsapp == null || whatsapp.trim().isEmpty()) {
+        String nama = ambil(intent, "nama");
+        String nopol = ambil(intent, "nopol");
+        String whatsapp = ambil(intent, "whatsapp");
+        String mesin = ambil(intent, "nomorMesin");
+        String km = ambil(intent, "kmTerakhir");
+        String interval = ambil(intent, "interval");
+        String jenisMotor = ambil(intent, "jenisMotor");
+        String tanggalInput = ambil(intent, "tanggalInput");
+        String jatuhTempo = ambil(intent, "jatuhTempo");
+
+        if (whatsapp.isEmpty()) {
             whatsapp = prefs.getString("wa_" + id, "");
         }
 
@@ -60,8 +59,7 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         NotificationManager manager =
                 (NotificationManager) context.getSystemService(
-                        Context.NOTIFICATION_SERVICE
-                );
+                        Context.NOTIFICATION_SERVICE);
 
         if (manager == null || !manager.areNotificationsEnabled()) {
             Log.e(TAG, "Notifikasi aplikasi tidak aktif.");
@@ -70,49 +68,64 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         buatChannel(context);
 
-        String pesanWA =
-                "🏍️ RR MOTOR\n\n" +
-                "Halo Bapak/Ibu.\n\n" +
-                "Sudah 1 bulan sejak terakhir ganti oli di RR MOTOR.\n\n" +
-                "Kami mengingatkan untuk melakukan pengecekan atau pergantian oli motor.\n\n" +
-                "Pengecekan oli GRATIS.\n\n" +
-                "Terima kasih telah mempercayakan perawatan motor Anda kepada RR MOTOR.";
+        StringBuilder pesan = new StringBuilder();
+
+        pesan.append("🏍️ RR MOTOR\n");
+        pesan.append("REMINDER GANTI OLI\n\n");
+
+        if (!nama.isEmpty()) {
+            pesan.append("Halo Bapak/Ibu ")
+                    .append(nama).append(".\n\n");
+        } else {
+            pesan.append("Halo Bapak/Ibu.\n\n");
+        }
+
+        pesan.append(
+                "Kami mengingatkan bahwa sudah waktunya " +
+                "melakukan pengecekan atau penggantian oli motor.\n\n");
+
+        tambahBaris(pesan, "Nama pelanggan", nama);
+        tambahBaris(pesan, "Nomor polisi", nopol);
+        tambahBaris(pesan, "Nomor mesin", mesin);
+        tambahBaris(pesan, "KM terakhir", km);
+        tambahBaris(pesan, "Jenis motor", jenisMotor);
+        tambahBaris(pesan, "Interval pengingat", interval);
+        tambahBaris(pesan, "Tanggal input", tanggalInput);
+        tambahBaris(pesan, "Jatuh tempo", jatuhTempo);
+
+        pesan.append("\nPengecekan oli GRATIS.\n\n");
+        pesan.append(
+                "Terima kasih telah mempercayakan perawatan " +
+                "motor Anda kepada RR MOTOR.");
 
         String nomor = normalisasiNomor(whatsapp);
         Intent bukaWA;
 
         if (!nomor.isEmpty()) {
             String url = "https://wa.me/" + nomor
-                    + "?text=" + Uri.encode(pesanWA);
+                    + "?text=" + Uri.encode(pesan.toString());
 
-            bukaWA = new Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse(url)
-            );
+            bukaWA = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         } else {
             bukaWA = new Intent(context, MainActivity.class);
         }
 
         bukaWA.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
-        );
+                        | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         PendingIntent klikNotifikasi = PendingIntent.getActivity(
                 context,
                 id.hashCode(),
                 bukaWA,
                 PendingIntent.FLAG_UPDATE_CURRENT
-                        | PendingIntent.FLAG_IMMUTABLE
-        );
+                        | PendingIntent.FLAG_IMMUTABLE);
 
-        String isi = "Saatnya mengingatkan pelanggan untuk ganti oli.";
+        String isi = nama.isEmpty()
+                ? "Saatnya mengingatkan pelanggan ganti oli."
+                : "Pelanggan: " + nama;
 
-        if (nama != null && !nama.trim().isEmpty()) {
-            isi = "Pelanggan: " + nama;
-        }
-
-        if (nopol != null && !nopol.trim().isEmpty()) {
+        if (!nopol.isEmpty()) {
             isi += " | Plat: " + nopol;
         }
 
@@ -126,11 +139,9 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         Notification notification = builder
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("RR MOTOR - Waktunya Ganti Oli")
+                .setContentTitle("RR MOTOR - Reminder Ganti Oli")
                 .setContentText(isi)
-                .setStyle(
-                        new Notification.BigTextStyle().bigText(isi)
-                )
+                .setStyle(new Notification.BigTextStyle().bigText(isi))
                 .setContentIntent(klikNotifikasi)
                 .setAutoCancel(true)
                 .setPriority(Notification.PRIORITY_HIGH)
@@ -138,13 +149,29 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         manager.notify(id.hashCode(), notification);
 
-        // Menandai notifikasi sudah ditampilkan,
-        // bukan berarti pesan WhatsApp sudah terkirim.
-        prefs.edit()
-                .putBoolean("done_" + id, true)
-                .apply();
+        // Notifikasi sudah ditampilkan.
+        // Ini bukan tanda bahwa WhatsApp sudah terkirim.
+        prefs.edit().putBoolean("done_" + id, true).apply();
 
         Log.d(TAG, "Notifikasi ditampilkan untuk ID: " + id);
+    }
+
+    private static String ambil(Intent intent, String key) {
+        String value = intent.getStringExtra(key);
+        return value == null ? "" : value.trim();
+    }
+
+    private static void tambahBaris(
+            StringBuilder pesan, String label, String nilai) {
+
+        if (nilai != null
+                && !nilai.trim().isEmpty()
+                && !"-".equals(nilai.trim())) {
+            pesan.append(label)
+                    .append(": ")
+                    .append(nilai.trim())
+                    .append("\n");
+        }
     }
 
     public static void jadwalkan(
@@ -153,70 +180,86 @@ public class ReminderReceiver extends BroadcastReceiver {
             String nama,
             String nopol,
             String whatsapp,
-            long waktu
-    ) {
-        if (id == null || id.trim().isEmpty()) {
-            return;
-        }
+            long waktu) {
+
+        jadwalkan(
+                context, id, nama, nopol, whatsapp,
+                "", "", "", "", "", waktu);
+    }
+
+    public static void jadwalkan(
+            Context context,
+            String id,
+            String nama,
+            String nopol,
+            String whatsapp,
+            String nomorMesin,
+            String kmTerakhir,
+            String interval,
+            String jenisMotor,
+            String tanggalInput,
+            String jatuhTempo,
+            long waktu) {
+
+        if (id == null || id.trim().isEmpty()) return;
 
         SharedPreferences prefs = context.getSharedPreferences(
-                PREFS, Context.MODE_PRIVATE
-        );
+                PREFS, Context.MODE_PRIVATE);
 
-        if (prefs.getBoolean("done_" + id, false)) {
-            return;
-        }
+        if (prefs.getBoolean("done_" + id, false)) return;
 
-        long sekarang = System.currentTimeMillis();
-
-        if (waktu <= sekarang) {
-            waktu = sekarang + 60_000L;
+        if (waktu <= System.currentTimeMillis()) {
+            waktu = System.currentTimeMillis() + 60_000L;
         }
 
         try {
             JSONObject data = new JSONObject();
 
-            data.put("id", id);
-            data.put("nama", nama == null ? "" : nama);
-            data.put("nopol", nopol == null ? "" : nopol);
-            data.put("whatsapp", whatsapp == null ? "" : whatsapp);
+            data.put("id", aman(id));
+            data.put("nama", aman(nama));
+            data.put("nopol", aman(nopol));
+            data.put("whatsapp", aman(whatsapp));
+            data.put("nomorMesin", aman(nomorMesin));
+            data.put("kmTerakhir", aman(kmTerakhir));
+            data.put("interval", aman(interval));
+            data.put("jenisMotor", aman(jenisMotor));
+            data.put("tanggalInput", aman(tanggalInput));
+            data.put("jatuhTempo", aman(jatuhTempo));
             data.put("waktu", waktu);
 
             prefs.edit()
                     .putString("reminder_" + id, data.toString())
-                    .putString(
-                            "wa_" + id,
-                            whatsapp == null ? "" : whatsapp
-                    )
+                    .putString("wa_" + id, aman(whatsapp))
                     .apply();
 
         } catch (Exception e) {
-            Log.e(TAG, "Gagal menyimpan jadwal reminder.", e);
+            Log.e(TAG, "Gagal menyimpan jadwal.", e);
         }
 
-        Intent alarmIntentAction = new Intent(
-                context, ReminderReceiver.class
-        );
+        Intent alarmIntentAction =
+                new Intent(context, ReminderReceiver.class);
 
         alarmIntentAction.putExtra("id", id);
-        alarmIntentAction.putExtra("nama", nama == null ? "" : nama);
-        alarmIntentAction.putExtra("nopol", nopol == null ? "" : nopol);
-        alarmIntentAction.putExtra(
-                "whatsapp", whatsapp == null ? "" : whatsapp
-        );
+        alarmIntentAction.putExtra("nama", aman(nama));
+        alarmIntentAction.putExtra("nopol", aman(nopol));
+        alarmIntentAction.putExtra("whatsapp", aman(whatsapp));
+        alarmIntentAction.putExtra("nomorMesin", aman(nomorMesin));
+        alarmIntentAction.putExtra("kmTerakhir", aman(kmTerakhir));
+        alarmIntentAction.putExtra("interval", aman(interval));
+        alarmIntentAction.putExtra("jenisMotor", aman(jenisMotor));
+        alarmIntentAction.putExtra("tanggalInput", aman(tanggalInput));
+        alarmIntentAction.putExtra("jatuhTempo", aman(jatuhTempo));
 
         PendingIntent alarmIntent = PendingIntent.getBroadcast(
                 context,
                 id.hashCode(),
                 alarmIntentAction,
                 PendingIntent.FLAG_UPDATE_CURRENT
-                        | PendingIntent.FLAG_IMMUTABLE
-        );
+                        | PendingIntent.FLAG_IMMUTABLE);
 
         AlarmManager alarmManager =
                 (AlarmManager) context.getSystemService(
-                        Context.ALARM_SERVICE
-                );
+                        Context.ALARM_SERVICE);
 
         if (alarmManager == null) {
             Log.e(TAG, "AlarmManager tidak tersedia.");
@@ -227,23 +270,19 @@ public class ReminderReceiver extends BroadcastReceiver {
             alarmManager.setAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     waktu,
-                    alarmIntent
-            );
+                    alarmIntent);
         } else {
             alarmManager.set(
                     AlarmManager.RTC_WAKEUP,
                     waktu,
-                    alarmIntent
-            );
+                    alarmIntent);
         }
 
         Log.d(TAG, "Jadwal reminder dibuat: " + id);
     }
 
     public static void batalkan(Context context, String id) {
-        if (id == null || id.trim().isEmpty()) {
-            return;
-        }
+        if (id == null || id.trim().isEmpty()) return;
 
         Intent intent = new Intent(context, ReminderReceiver.class);
 
@@ -252,27 +291,33 @@ public class ReminderReceiver extends BroadcastReceiver {
                 id.hashCode(),
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT
-                        | PendingIntent.FLAG_IMMUTABLE
-        );
+                        | PendingIntent.FLAG_IMMUTABLE);
 
         AlarmManager alarmManager =
                 (AlarmManager) context.getSystemService(
-                        Context.ALARM_SERVICE
-                );
+                        Context.ALARM_SERVICE);
 
         if (alarmManager != null) {
             alarmManager.cancel(alarmIntent);
         }
 
         SharedPreferences prefs = context.getSharedPreferences(
-                PREFS, Context.MODE_PRIVATE
-        );
+                PREFS, Context.MODE_PRIVATE);
 
+        // Jangan menghapus done_ID di sini.
+        // Status selesai perlu dikelola secara terpisah.
         prefs.edit()
                 .remove("reminder_" + id)
                 .remove("wa_" + id)
-                .remove("done_" + id)
                 .apply();
+
+        NotificationManager manager =
+                (NotificationManager) context.getSystemService(
+                        Context.NOTIFICATION_SERVICE);
+
+        if (manager != null) {
+            manager.cancel(id.hashCode());
+        }
     }
 
     public static void buatChannel(Context context) {
@@ -280,19 +325,16 @@ public class ReminderReceiver extends BroadcastReceiver {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Reminder Ganti Oli RR MOTOR",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
+                    NotificationManager.IMPORTANCE_HIGH);
 
             channel.setDescription(
-                    "Pengingat jadwal ganti oli pelanggan RR MOTOR"
-            );
+                    "Pengingat jadwal ganti oli pelanggan RR MOTOR");
 
             channel.enableVibration(true);
 
             NotificationManager manager =
                     (NotificationManager) context.getSystemService(
-                            Context.NOTIFICATION_SERVICE
-                    );
+                            Context.NOTIFICATION_SERVICE);
 
             if (manager != null) {
                 manager.createNotificationChannel(channel);
@@ -301,20 +343,20 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     private static String normalisasiNomor(String nomor) {
-        if (nomor == null) {
-            return "";
-        }
+        if (nomor == null) return "";
 
         nomor = nomor.replaceAll("[^0-9]", "");
 
-        if (nomor.isEmpty()) {
-            return "";
-        }
+        if (nomor.isEmpty()) return "";
 
         if (nomor.startsWith("0")) {
             nomor = "62" + nomor.substring(1);
         }
 
         return nomor;
+    }
+
+    private static String aman(String teks) {
+        return teks == null ? "" : teks.trim();
     }
 }
