@@ -22,10 +22,10 @@ public class BootReceiver extends BroadcastReceiver {
             return;
         }
 
-        SharedPreferences prefs =
-                context.getSharedPreferences(
-                        "RR_MOTOR_ALARM",
-                        Context.MODE_PRIVATE);
+        SharedPreferences prefs = context.getSharedPreferences(
+                "RR_MOTOR_ALARM",
+                Context.MODE_PRIVATE
+        );
 
         Map<String, ?> semua = prefs.getAll();
 
@@ -36,18 +36,28 @@ public class BootReceiver extends BroadcastReceiver {
 
             try {
                 JSONObject data = new JSONObject(
-                        String.valueOf(entry.getValue()));
+                        String.valueOf(entry.getValue())
+                );
 
-                String id = data.getString("id");
+                String id = data.optString("id", "");
 
-                if (prefs.getBoolean("done_" + id, false)) {
+                if (id.isEmpty()
+                        || prefs.getBoolean("done_" + id, false)) {
                     continue;
                 }
 
                 String nama = data.optString("nama", "");
                 String nopol = data.optString("nopol", "");
                 String whatsapp = data.optString("whatsapp", "");
+                String nomorMesin = data.optString("nomorMesin", "");
+                String kmTerakhir = data.optString("kmTerakhir", "");
+                String interval = data.optString("interval", "");
+                String jenisMotor = data.optString("jenisMotor", "");
+                String tanggalInput = data.optString("tanggalInput", "");
+                String jatuhTempo = data.optString("jatuhTempo", "");
                 long waktu = data.optLong("waktu", 0L);
+
+                if (waktu <= 0L) continue;
 
                 ReminderReceiver.jadwalkan(
                         context,
@@ -55,13 +65,21 @@ public class BootReceiver extends BroadcastReceiver {
                         nama,
                         nopol,
                         whatsapp,
-                        waktu);
+                        nomorMesin,
+                        kmTerakhir,
+                        interval,
+                        jenisMotor,
+                        tanggalInput,
+                        jatuhTempo,
+                        waktu
+                );
 
             } catch (Exception e) {
                 android.util.Log.e(
                         "RR_MOTOR",
                         "Gagal memulihkan jadwal reminder",
-                        e);
+                        e
+                );
             }
         }
     }
