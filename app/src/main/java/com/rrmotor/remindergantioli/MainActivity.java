@@ -331,9 +331,52 @@ public class MainActivity extends Activity {
             periksaDanJadwalkanReminder();
 
             pesan(
-                    "Pemeriksaan jadwal dimulai. " +
+                    "Pemeriksaan jadwal dimulai.\n\n" +
                     "Pastikan internet dan izin notifikasi aktif."
             );
+        });
+
+        // TOMBOL BARU UNTUK MENGUJI NOTIFIKASI
+        tombol("🔔 TES NOTIFIKASI", () -> {
+
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(
+                    Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+
+                mintaIzinNotifikasi();
+
+                pesan(
+                        "Izin notifikasi belum aktif.\n\n" +
+                        "Izinkan notifikasi saat permintaan izin muncul, " +
+                        "kemudian tekan TES NOTIFIKASI lagi."
+                );
+
+                return;
+            }
+
+            try {
+                boolean berhasil =
+                        ReminderReceiver.tampilkanNotifikasiTes(this);
+
+                if (berhasil) {
+                    pesan(
+                            "Permintaan notifikasi tes berhasil dijalankan.\n\n" +
+                            "Periksa bilah notifikasi HP Anda."
+                    );
+                } else {
+                    pesan(
+                            "Notifikasi tes tidak berhasil ditampilkan.\n\n" +
+                            "Periksa izin notifikasi aplikasi di Pengaturan HP."
+                    );
+                }
+
+            } catch (Exception e) {
+                pesan(
+                        "Gagal menjalankan tes notifikasi:\n" +
+                        e.getMessage()
+                );
+            }
         });
 
         tombol("KELUAR AKUN", () -> {
@@ -604,6 +647,8 @@ public class MainActivity extends Activity {
                         auth.getCurrentUser().getUid())
                 .get()
                 .addOnSuccessListener(snapshot -> {
+                    int jumlahDijadwalkan = 0;
+
                     for (DocumentSnapshot doc : snapshot.getDocuments()) {
 
                         String status = nilai(doc, "status");
@@ -652,6 +697,8 @@ public class MainActivity extends Activity {
                                     waktu.getTimeInMillis()
                             );
 
+                            jumlahDijadwalkan++;
+
                         } catch (Exception e) {
                             android.util.Log.e(
                                     "RR_MOTOR",
@@ -659,12 +706,25 @@ public class MainActivity extends Activity {
                                     e);
                         }
                     }
+
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Pemeriksaan selesai. Data yang dijadwalkan: "
+                                    + jumlahDijadwalkan,
+                            Toast.LENGTH_LONG
+                    ).show();
                 })
-                .addOnFailureListener(error ->
-                        android.util.Log.e(
-                                "RR_MOTOR",
-                                "Gagal memeriksa reminder Firebase",
-                                error));
+                .addOnFailureListener(error -> {
+                    android.util.Log.e(
+                            "RR_MOTOR",
+                            "Gagal memeriksa reminder Firebase",
+                            error);
+
+                    pesan(
+                            "Gagal membaca jadwal dari Firebase:\n"
+                                    + error.getMessage()
+                    );
+                });
     }
 
     // =========================
@@ -893,9 +953,6 @@ public class MainActivity extends Activity {
                             .document(documentId)
                             .update("status", "TERKIRIM")
                             .addOnSuccessListener(unused -> {
-                                // Alarm pelanggan ini dibatalkan karena
-                                // statusnya sudah terkirim, bukan karena
-                                // penghapusan riwayat.
                                 ReminderReceiver.batalkan(
                                         this, documentId);
 
@@ -953,8 +1010,6 @@ public class MainActivity extends Activity {
                     doc.getReference()
                             .delete()
                             .addOnSuccessListener(unused -> {
-                                // Tidak memanggil ReminderReceiver.batalkan()
-                                // saat menghapus riwayat.
                                 pesan("Riwayat berhasil dihapus.");
                                 riwayat();
                             })
@@ -974,7 +1029,6 @@ public class MainActivity extends Activity {
     private void konfirmasiHapusSemuaRiwayat() {
         if (auth.getCurrentUser() == null) {
             pesan("Silakan login kembali.");
-            tampilkanLogin();
             return;
         }
 
@@ -985,7 +1039,6 @@ public class MainActivity extends Activity {
                                 + "akan dihapus dari Firebase.\n\n"
                                 + "Data pelanggan yang belum terkirim "
                                 + "tidak ikut dihapus.\n\n"
-                                + "Tidak ada penghapusan otomatis. "
                                 + "Data yang dihapus tidak dapat dikembalikan."
                 )
                 .setNegativeButton("BATAL", null)
@@ -1006,7 +1059,6 @@ public class MainActivity extends Activity {
 
         if (auth.getCurrentUser() == null) {
             pesan("Silakan login kembali.");
-            tampilkanLogin();
             return;
         }
 
@@ -1098,7 +1150,6 @@ public class MainActivity extends Activity {
 
         String uid = auth.getCurrentUser().getUid();
 
-        // Periksa kembali pemilik dan status sebelum menghapus.
         doc.getReference()
                 .get()
                 .addOnSuccessListener(dataTerbaru -> {
@@ -1115,8 +1166,6 @@ public class MainActivity extends Activity {
                     if (!uid.equals(pemilik)
                             || !sudahTerkirim(status)) {
 
-                        // Data yang tidak lagi memenuhi syarat
-                        // tidak dihapus.
                         hapusDokumenRiwayat(
                                 daftar, indeks + 1, berhasil, gagal);
                         return;
