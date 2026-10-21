@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Koneksi Firebase -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Izin notifikasi Android 13 ke atas -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Memulihkan alarm setelah HP dinyalakan ulang -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
@@ -16,7 +13,6 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Halaman utama aplikasi -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -28,13 +24,11 @@
 
         </activity>
 
-        <!-- Penerima alarm pengingat ganti oli -->
         <receiver
             android:name=".ReminderReceiver"
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Memulihkan alarm setelah HP restart atau aplikasi diperbarui -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
