@@ -21,11 +21,13 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.DocumentSnapshot;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Date;
 
 public class MainActivity extends Activity {
 
@@ -48,6 +50,7 @@ public class MainActivity extends Activity {
     private Calendar tanggalDipilih = Calendar.getInstance();
 
     private boolean sedangMenyimpan = false;
+    private boolean sedangMenghapus = false;
 
     private final SimpleDateFormat formatTanggal =
             new SimpleDateFormat("dd-MM-yyyy", Locale.getDefault());
@@ -242,6 +245,11 @@ public class MainActivity extends Activity {
     }
 
     private void tampilkanForm() {
+        if (auth.getCurrentUser() == null) {
+            tampilkanLogin();
+            return;
+        }
+
         buatLayout();
 
         judul("🏍️ RR MOTOR\nREMINDER GANTI OLI");
@@ -603,8 +611,6 @@ public class MainActivity extends Activity {
                         if ("TERKIRIM".equalsIgnoreCase(status)
                                 || "SUDAH TERKIRIM".equalsIgnoreCase(status)) {
 
-                            // Batalkan alarm, tetapi jangan hapus status
-                            // done_ID agar alarm lama tidak dibuat ulang.
                             ReminderReceiver.batalkan(
                                     MainActivity.this,
                                     doc.getId());
@@ -661,9 +667,14 @@ public class MainActivity extends Activity {
                                 error));
     }
 
+    // =========================
+    // HALAMAN RIWAYAT REMINDER
+    // =========================
+
     private void riwayat() {
         if (auth.getCurrentUser() == null) {
             pesan("Silakan login kembali.");
+            tampilkanLogin();
             return;
         }
 
@@ -681,6 +692,27 @@ public class MainActivity extends Activity {
                     daftar.setPadding(16, 12, 16, 12);
 
                     scroll.addView(daftar);
+
+                    int jumlahTerkirim = 0;
+
+                    for (DocumentSnapshot doc : snapshot.getDocuments()) {
+                        String status = nilai(doc, "status");
+
+                        if (sudahTerkirim(status)) {
+                            jumlahTerkirim++;
+                        }
+                    }
+
+                    TextView ringkasan = new TextView(this);
+                    ringkasan.setText(
+                            "Jumlah riwayat terkirim: " + jumlahTerkirim
+                            + "\nData belum terkirim akan tetap dipertahankan."
+                    );
+                    ringkasan.setTextSize(15);
+                    ringkasan.setTextColor(HIJAU);
+                    ringkasan.setPadding(0, 0, 0, 16);
+
+                    daftar.addView(ringkasan);
 
                     if (snapshot.isEmpty()) {
                         TextView kosong = new TextView(this);
@@ -718,11 +750,7 @@ public class MainActivity extends Activity {
                         informasi.setTextSize(16);
                         kartu.addView(informasi);
 
-                        boolean sudahTerkirim =
-                                "TERKIRIM".equalsIgnoreCase(status)
-                                || "SUDAH TERKIRIM".equalsIgnoreCase(status);
-
-                        if (sudahTerkirim) {
+                        if (sudahTerkirim(status)) {
 
                             Button hapus = new Button(this);
 
@@ -736,19 +764,9 @@ public class MainActivity extends Activity {
                             kartu.addView(hapus);
 
                             hapus.setOnClickListener(v ->
-                                    new AlertDialog.Builder(this)
-                                            .setTitle("Hapus riwayat?")
-                                            .setMessage(
-                                                    "Hapus riwayat pelanggan " +
-                                                    namaPelanggan +
-                                                    " dari Firebase? Data yang " +
-                                                    "dihapus tidak dapat dikembalikan.")
-                                            .setNegativeButton("BATAL", null)
-                                            .setPositiveButton(
-                                                    "HAPUS",
-                                                    (dialog, which) ->
-                                                            hapusRiwayat(doc.getId()))
-                                            .show());
+                                    konfirmasiHapusSatu(
+                                            doc.getId(),
+                                            namaPelanggan));
 
                         } else {
 
@@ -788,39 +806,67 @@ public class MainActivity extends Activity {
                                 new LinearLayout.LayoutParams(-1, 2));
                     }
 
-                    new AlertDialog.Builder(this)
+                    AlertDialog dialog = new AlertDialog.Builder(this)
                             .setTitle("RIWAYAT REMINDER")
                             .setView(scroll)
-                            .setPositiveButton("TUTUP", null)
-                            .show();
+                            .setNeutralButton("HAPUS SEMUA", null)
+                            .setPositiveButton("KEMBALI", null)
+                            .create();
+
+                    dialog.setOnShowListener(d -> {
+                        Button hapusSemua =
+                                dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+
+                        Button kembali =
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+
+                        hapusSemua.setOnClickListener(v -> {
+                            dialog.dismiss();
+                            konfirmasiHapusSemuaRiwayat();
+                        });
+
+                        kembali.setOnClickListener(v -> {
+                            dialog.dismiss();
+                            tampilkanForm();
+                        });
+                    });
+
+                    dialog.show();
                 })
                 .addOnFailureListener(error ->
                         pesan("Gagal membuka riwayat: "
                                 + error.getMessage()));
     }
 
-    private void tandaiTerkirim(String documentId) {
-        if (auth.getCurrentUser() == null) {
-            pesan("Silakan login kembali.");
-            return;
-        }
-
-        db.collection("reminders")
-                .document(documentId)
-                .update("status", "TERKIRIM")
-                .addOnSuccessListener(unused -> {
-                    ReminderReceiver.batalkan(this, documentId);
-
-                    pesan("Status berhasil diubah menjadi TERKIRIM.");
-
-                    riwayat();
-                })
-                .addOnFailureListener(error ->
-                        pesan("Gagal mengubah status: "
-                                + error.getMessage()));
+    private boolean sudahTerkirim(String status) {
+        return "TERKIRIM".equalsIgnoreCase(status)
+                || "SUDAH TERKIRIM".equalsIgnoreCase(status);
     }
 
-    private void hapusRiwayat(String documentId) {
+    private void konfirmasiHapusSatu(
+            String documentId,
+            String namaPelanggan) {
+
+        new AlertDialog.Builder(this)
+                .setTitle("Hapus riwayat?")
+                .setMessage(
+                        "Hapus riwayat pelanggan " + namaPelanggan
+                                + " dari Firebase?\n\n"
+                                + "Jadwal alarm tidak dibatalkan oleh "
+                                + "fungsi hapus riwayat ini.\n\n"
+                                + "Data yang dihapus tidak dapat dikembalikan."
+                )
+                .setNegativeButton("BATAL", null)
+                .setPositiveButton("HAPUS", (dialog, which) ->
+                        hapusRiwayat(documentId))
+                .show();
+    }
+
+    // =========================
+    // TANDAI SUDAH TERKIRIM
+    // =========================
+
+    private void tandaiTerkirim(String documentId) {
         if (auth.getCurrentUser() == null) {
             pesan("Silakan login kembali.");
             return;
@@ -832,36 +878,84 @@ public class MainActivity extends Activity {
                 .addOnSuccessListener(doc -> {
 
                     if (!doc.exists()) {
+                        pesan("Data pelanggan tidak ditemukan.");
+                        return;
+                    }
+
+                    String pemilik = doc.getString("uid");
+
+                    if (!auth.getCurrentUser().getUid().equals(pemilik)) {
+                        pesan("Anda tidak memiliki izin mengubah data ini.");
+                        return;
+                    }
+
+                    db.collection("reminders")
+                            .document(documentId)
+                            .update("status", "TERKIRIM")
+                            .addOnSuccessListener(unused -> {
+                                // Alarm pelanggan ini dibatalkan karena
+                                // statusnya sudah terkirim, bukan karena
+                                // penghapusan riwayat.
+                                ReminderReceiver.batalkan(
+                                        this, documentId);
+
+                                pesan("Status berhasil diubah menjadi TERKIRIM.");
+
+                                riwayat();
+                            })
+                            .addOnFailureListener(error ->
+                                    pesan("Gagal mengubah status: "
+                                            + error.getMessage()));
+                })
+                .addOnFailureListener(error ->
+                        pesan("Gagal memeriksa data: "
+                                + error.getMessage()));
+    }
+
+    // =========================
+    // HAPUS SATU RIWAYAT
+    // =========================
+
+    private void hapusRiwayat(String documentId) {
+        if (auth.getCurrentUser() == null) {
+            pesan("Silakan login kembali.");
+            tampilkanLogin();
+            return;
+        }
+
+        db.collection("reminders")
+                .document(documentId)
+                .get()
+                .addOnSuccessListener(doc -> {
+
+                    if (!doc.exists()) {
                         pesan("Riwayat tidak ditemukan.");
+                        riwayat();
                         return;
                     }
 
                     String pemilik = doc.getString("uid");
                     String status = doc.getString("status");
 
-                    boolean sudahTerkirim =
-                            "TERKIRIM".equalsIgnoreCase(status)
-                            || "SUDAH TERKIRIM".equalsIgnoreCase(status);
-
                     if (!auth.getCurrentUser().getUid().equals(pemilik)) {
                         pesan("Anda tidak memiliki izin menghapus data ini.");
                         return;
                     }
 
-                    if (!sudahTerkirim) {
-                        pesan("Riwayat yang belum terkirim tidak dapat dihapus.");
+                    if (!sudahTerkirim(status)) {
+                        pesan(
+                                "Hanya riwayat yang sudah terkirim "
+                                        + "yang dapat dihapus."
+                        );
                         return;
                     }
 
-                    db.collection("reminders")
-                            .document(documentId)
+                    doc.getReference()
                             .delete()
                             .addOnSuccessListener(unused -> {
-                                ReminderReceiver.batalkan(
-                                        this, documentId);
-
+                                // Tidak memanggil ReminderReceiver.batalkan()
+                                // saat menghapus riwayat.
                                 pesan("Riwayat berhasil dihapus.");
-
                                 riwayat();
                             })
                             .addOnFailureListener(error ->
@@ -872,6 +966,201 @@ public class MainActivity extends Activity {
                         pesan("Gagal memeriksa riwayat: "
                                 + error.getMessage()));
     }
+
+    // =========================
+    // KONFIRMASI HAPUS SEMUA
+    // =========================
+
+    private void konfirmasiHapusSemuaRiwayat() {
+        if (auth.getCurrentUser() == null) {
+            pesan("Silakan login kembali.");
+            tampilkanLogin();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("HAPUS SEMUA RIWAYAT?")
+                .setMessage(
+                        "Semua riwayat yang sudah berstatus TERKIRIM "
+                                + "akan dihapus dari Firebase.\n\n"
+                                + "Data pelanggan yang belum terkirim "
+                                + "tidak ikut dihapus.\n\n"
+                                + "Tidak ada penghapusan otomatis. "
+                                + "Data yang dihapus tidak dapat dikembalikan."
+                )
+                .setNegativeButton("BATAL", null)
+                .setPositiveButton("HAPUS SEMUA", (dialog, which) ->
+                        hapusSemuaRiwayatTerkirim())
+                .show();
+    }
+
+    // =========================
+    // HAPUS SEMUA RIWAYAT TERKIRIM
+    // =========================
+
+    private void hapusSemuaRiwayatTerkirim() {
+        if (sedangMenghapus) {
+            pesan("Proses penghapusan sedang berjalan.");
+            return;
+        }
+
+        if (auth.getCurrentUser() == null) {
+            pesan("Silakan login kembali.");
+            tampilkanLogin();
+            return;
+        }
+
+        sedangMenghapus = true;
+
+        String uid = auth.getCurrentUser().getUid();
+
+        db.collection("reminders")
+                .whereEqualTo("uid", uid)
+                .get()
+                .addOnSuccessListener(snapshot -> {
+
+                    List<DocumentSnapshot> daftarHapus =
+                            new ArrayList<>();
+
+                    for (DocumentSnapshot doc : snapshot.getDocuments()) {
+                        String pemilik = doc.getString("uid");
+                        String status = nilai(doc, "status");
+
+                        if (uid.equals(pemilik)
+                                && sudahTerkirim(status)) {
+                            daftarHapus.add(doc);
+                        }
+                    }
+
+                    if (daftarHapus.isEmpty()) {
+                        sedangMenghapus = false;
+
+                        new AlertDialog.Builder(this)
+                                .setTitle("RIWAYAT KOSONG")
+                                .setMessage(
+                                        "Tidak ada riwayat terkirim "
+                                                + "untuk dihapus."
+                                )
+                                .setPositiveButton("OK",
+                                        (d, w) -> riwayat())
+                                .show();
+
+                        return;
+                    }
+
+                    hapusDokumenRiwayat(
+                            daftarHapus,
+                            0,
+                            0,
+                            0
+                    );
+                })
+                .addOnFailureListener(error -> {
+                    sedangMenghapus = false;
+
+                    pesan("Gagal membaca riwayat: "
+                            + error.getMessage());
+                });
+    }
+
+    private void hapusDokumenRiwayat(
+            List<DocumentSnapshot> daftar,
+            int indeks,
+            int berhasil,
+            int gagal) {
+
+        if (indeks >= daftar.size()) {
+            sedangMenghapus = false;
+
+            new AlertDialog.Builder(this)
+                    .setTitle("HASIL PENGHAPUSAN")
+                    .setMessage(
+                            "Berhasil dihapus: " + berhasil
+                                    + "\nGagal dihapus: " + gagal
+                                    + "\n\nData pelanggan yang belum "
+                                    + "terkirim tidak ikut dihapus."
+                    )
+                    .setPositiveButton("OK", (dialog, which) ->
+                            riwayat())
+                    .show();
+
+            return;
+        }
+
+        DocumentSnapshot doc = daftar.get(indeks);
+
+        if (auth.getCurrentUser() == null) {
+            sedangMenghapus = false;
+            pesan("Sesi login berakhir. Silakan login kembali.");
+            tampilkanLogin();
+            return;
+        }
+
+        String uid = auth.getCurrentUser().getUid();
+
+        // Periksa kembali pemilik dan status sebelum menghapus.
+        doc.getReference()
+                .get()
+                .addOnSuccessListener(dataTerbaru -> {
+
+                    if (!dataTerbaru.exists()) {
+                        hapusDokumenRiwayat(
+                                daftar, indeks + 1, berhasil, gagal);
+                        return;
+                    }
+
+                    String pemilik = dataTerbaru.getString("uid");
+                    String status = nilai(dataTerbaru, "status");
+
+                    if (!uid.equals(pemilik)
+                            || !sudahTerkirim(status)) {
+
+                        // Data yang tidak lagi memenuhi syarat
+                        // tidak dihapus.
+                        hapusDokumenRiwayat(
+                                daftar, indeks + 1, berhasil, gagal);
+                        return;
+                    }
+
+                    dataTerbaru.getReference()
+                            .delete()
+                            .addOnSuccessListener(unused ->
+                                    hapusDokumenRiwayat(
+                                            daftar,
+                                            indeks + 1,
+                                            berhasil + 1,
+                                            gagal))
+                            .addOnFailureListener(error -> {
+                                android.util.Log.e(
+                                        "RR_MOTOR",
+                                        "Gagal menghapus riwayat "
+                                                + dataTerbaru.getId(),
+                                        error);
+
+                                hapusDokumenRiwayat(
+                                        daftar,
+                                        indeks + 1,
+                                        berhasil,
+                                        gagal + 1);
+                            });
+                })
+                .addOnFailureListener(error -> {
+                    android.util.Log.e(
+                            "RR_MOTOR",
+                            "Gagal memeriksa riwayat sebelum menghapus",
+                            error);
+
+                    hapusDokumenRiwayat(
+                            daftar,
+                            indeks + 1,
+                            berhasil,
+                            gagal + 1);
+                });
+    }
+
+    // =========================
+    // UTILITAS
+    // =========================
 
     private String nilai(DocumentSnapshot doc, String kolom) {
         String value = doc.getString(kolom);
