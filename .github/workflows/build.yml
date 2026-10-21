@@ -28,10 +28,11 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build APK
-        run: gradle assembleDebug
+      - name: Build APK with detailed error
+        run: gradle assembleDebug --stacktrace --info
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: RR-MOTOR-REMINDER-GANTI-OLI-APK
