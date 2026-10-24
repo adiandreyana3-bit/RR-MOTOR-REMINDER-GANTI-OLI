@@ -20,6 +20,7 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import org.json.JSONObject;
 
 import java.util.Map;
+import java.util.Locale;
 
 public class ReminderReceiver extends BroadcastReceiver {
 
@@ -31,22 +32,16 @@ public class ReminderReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
 
-        if (intent == null) {
-            return;
-        }
+        if (intent == null) return;
 
         String action = intent.getAction();
 
-        // Pulihkan jadwal setelah HP dinyalakan kembali.
         if (Intent.ACTION_BOOT_COMPLETED.equals(action)
-                || "android.intent.action.MY_PACKAGE_REPLACED"
-                .equals(action)) {
-
+                || "android.intent.action.MY_PACKAGE_REPLACED".equals(action)) {
             pulihkanSemuaJadwal(context);
             return;
         }
 
-        // Ambil ID pelanggan.
         String id = ambil(intent, "id");
 
         if (id.isEmpty()) {
@@ -54,7 +49,6 @@ public class ReminderReceiver extends BroadcastReceiver {
             return;
         }
 
-        // Tampilkan notifikasi pengingat.
         tampilkanNotifikasi(
                 context,
                 id,
@@ -87,12 +81,10 @@ public class ReminderReceiver extends BroadcastReceiver {
             String tanggalInput,
             String jatuhTempo) {
 
-        // Periksa izin notifikasi Android 13 ke atas.
         if (Build.VERSION.SDK_INT >= 33
                 && context.checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-
             Log.e(TAG, "Izin notifikasi belum diberikan.");
             return;
         }
@@ -101,13 +93,8 @@ public class ReminderReceiver extends BroadcastReceiver {
                 (NotificationManager) context.getSystemService(
                         Context.NOTIFICATION_SERVICE);
 
-        if (manager == null) {
-            Log.e(TAG, "NotificationManager tidak tersedia.");
-            return;
-        }
-
-        if (!manager.areNotificationsEnabled()) {
-            Log.e(TAG, "Notifikasi aplikasi dinonaktifkan.");
+        if (manager == null || !manager.areNotificationsEnabled()) {
+            Log.e(TAG, "Notifikasi aplikasi tidak aktif.");
             return;
         }
 
@@ -121,16 +108,9 @@ public class ReminderReceiver extends BroadcastReceiver {
             isi += " | Plat: " + nopol;
         }
 
-        // Buat pesan WhatsApp.
         String pesanWA = buatPesan(
-                nama,
-                nopol,
-                nomorMesin,
-                km,
-                interval,
-                jenisMotor,
-                tanggalInput,
-                jatuhTempo
+                nama, nopol, nomorMesin, km, interval,
+                jenisMotor, tanggalInput, jatuhTempo
         );
 
         String nomor = normalisasiNomor(whatsapp);
@@ -138,23 +118,13 @@ public class ReminderReceiver extends BroadcastReceiver {
         Intent bukaAplikasi;
 
         if (!nomor.isEmpty()) {
-
             String url = "https://wa.me/"
-                    + nomor
-                    + "?text="
-                    + Uri.encode(pesanWA);
+                    + nomor + "?text=" + Uri.encode(pesanWA);
 
             bukaAplikasi = new Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse(url)
-            );
-
+                    Intent.ACTION_VIEW, Uri.parse(url));
         } else {
-
-            bukaAplikasi = new Intent(
-                    context,
-                    MainActivity.class
-            );
+            bukaAplikasi = new Intent(context, MainActivity.class);
         }
 
         bukaAplikasi.addFlags(
@@ -173,51 +143,33 @@ public class ReminderReceiver extends BroadcastReceiver {
         Notification.Builder builder;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-
-            builder = new Notification.Builder(
-                    context,
-                    CHANNEL_ID
-            );
-
+            builder = new Notification.Builder(context, CHANNEL_ID);
         } else {
-
             builder = new Notification.Builder(context)
                     .setPriority(Notification.PRIORITY_HIGH);
         }
 
         Notification notification = builder
-                .setSmallIcon(
-                        android.R.drawable.ic_dialog_info)
-                .setContentTitle(
-                        "RR MOTOR - Reminder Ganti Oli")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("RR MOTOR - Reminder Ganti Oli")
                 .setContentText(isi)
-                .setStyle(
-                        new Notification.BigTextStyle()
-                                .bigText(isi))
+                .setStyle(new Notification.BigTextStyle().bigText(isi))
                 .setContentIntent(klik)
                 .setAutoCancel(true)
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .build();
 
         try {
-
-            // Posting notifikasi ke Android.
             manager.notify(id.hashCode(), notification);
 
-            Log.d(
-                    TAG,
-                    "Notifikasi berhasil diposting. ID=" + id
-            );
+            Log.d(TAG, "Notifikasi diposting. ID=" + id);
 
-            // Perbarui status Firebase setelah posting notifikasi.
+            // Perbarui status Firestore setelah notifikasi diposting.
             perbaruiStatusFirebase(id);
 
-            // Hapus jadwal alarm yang sudah dijalankan.
+            // Tandai alarm ini selesai agar tidak dipulihkan lagi.
             SharedPreferences prefs =
-                    context.getSharedPreferences(
-                            PREFS,
-                            Context.MODE_PRIVATE
-                    );
+                    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
             prefs.edit()
                     .remove("reminder_" + id)
@@ -225,66 +177,36 @@ public class ReminderReceiver extends BroadcastReceiver {
                     .putBoolean("done_" + id, true)
                     .apply();
 
-        } catch (SecurityException e) {
-
-            Log.e(
-                    TAG,
-                    "Tidak diizinkan menampilkan notifikasi.",
-                    e
-            );
-
         } catch (Exception e) {
-
-            Log.e(
-                    TAG,
-                    "Gagal menampilkan notifikasi.",
-                    e
-            );
+            Log.e(TAG, "Gagal menampilkan notifikasi.", e);
         }
     }
 
     // =====================================================
-    // PEMBARUAN STATUS FIREBASE
+    // STATUS FIREBASE
     // =====================================================
 
     private static void perbaruiStatusFirebase(String id) {
-
         FirebaseFirestore.getInstance()
                 .collection("reminders")
                 .document(id)
                 .update("status", "SUDAH DIINGATKAN")
-                .addOnSuccessListener(unused -> {
-
-                    Log.d(
-                            TAG,
-                            "Status SUDAH DIINGATKAN berhasil diperbarui. ID="
-                                    + id
-                    );
-
-                })
-                .addOnFailureListener(error -> {
-
-                    Log.e(
-                            TAG,
-                            "Gagal memperbarui status Firebase. ID=" + id,
-                            error
-                    );
-                });
+                .addOnSuccessListener(unused ->
+                        Log.d(TAG, "Status SUDAH DIINGATKAN: " + id))
+                .addOnFailureListener(error ->
+                        Log.e(TAG, "Gagal memperbarui status Firebase: " + id, error));
     }
 
     // =====================================================
     // TES NOTIFIKASI
     // =====================================================
 
-    public static boolean tampilkanNotifikasiTes(
-            Context context) {
+    public static boolean tampilkanNotifikasiTes(Context context) {
 
         if (Build.VERSION.SDK_INT >= 33
                 && context.checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-
-            Log.e(TAG, "Izin notifikasi tes belum diberikan.");
             return false;
         }
 
@@ -292,10 +214,7 @@ public class ReminderReceiver extends BroadcastReceiver {
                 (NotificationManager) context.getSystemService(
                         Context.NOTIFICATION_SERVICE);
 
-        if (manager == null
-                || !manager.areNotificationsEnabled()) {
-
-            Log.e(TAG, "Notifikasi tes tidak dapat ditampilkan.");
+        if (manager == null || !manager.areNotificationsEnabled()) {
             return false;
         }
 
@@ -304,22 +223,13 @@ public class ReminderReceiver extends BroadcastReceiver {
         Notification.Builder builder;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-
-            builder = new Notification.Builder(
-                    context,
-                    CHANNEL_ID
-            );
-
+            builder = new Notification.Builder(context, CHANNEL_ID);
         } else {
-
             builder = new Notification.Builder(context)
                     .setPriority(Notification.PRIORITY_HIGH);
         }
 
-        Intent buka = new Intent(
-                context,
-                MainActivity.class
-        );
+        Intent buka = new Intent(context, MainActivity.class);
 
         PendingIntent klik = PendingIntent.getActivity(
                 context,
@@ -330,40 +240,26 @@ public class ReminderReceiver extends BroadcastReceiver {
         );
 
         Notification notifikasi = builder
-                .setSmallIcon(
-                        android.R.drawable.ic_dialog_info)
-                .setContentTitle(
-                        "TES NOTIFIKASI RR MOTOR")
-                .setContentText(
-                        "Notifikasi HP berfungsi dengan baik.")
-                .setStyle(
-                        new Notification.BigTextStyle()
-                                .bigText(
-                                        "Tes berhasil. "
-                                                + "Selanjutnya kita periksa jadwal "
-                                                + "reminder pelanggan."))
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("TES NOTIFIKASI RR MOTOR")
+                .setContentText("Notifikasi HP berfungsi dengan baik.")
+                .setStyle(new Notification.BigTextStyle().bigText(
+                        "Tes berhasil. Selanjutnya kita periksa jadwal reminder pelanggan."))
                 .setContentIntent(klik)
                 .setAutoCancel(true)
                 .build();
 
         try {
-
             manager.notify(778899, notifikasi);
-
-            Log.d(TAG, "Notifikasi tes berhasil ditampilkan.");
-
             return true;
-
         } catch (Exception e) {
-
             Log.e(TAG, "Gagal menampilkan notifikasi tes.", e);
-
             return false;
         }
     }
 
     // =====================================================
-    // PESAN WHATSAPP
+    // TEMPLATE WHATSAPP DAN PERHITUNGAN KM
     // =====================================================
 
     private static String buatPesan(
@@ -381,51 +277,83 @@ public class ReminderReceiver extends BroadcastReceiver {
         pesan.append("🏍️ *RR MOTOR*\n\n");
 
         if (kosong(nama)) {
-
             pesan.append("Halo Bapak/Ibu.\n\n");
-
         } else {
-
             pesan.append("Halo Bapak/Ibu ")
                     .append(nama.trim())
                     .append(".\n\n");
         }
 
-        if (kosong(interval)) {
-
-            pesan.append(
-                    "Kami mengingatkan untuk melakukan "
-                            + "pengecekan atau penggantian oli.\n\n"
-            );
-
-        } else {
-
+        if (!kosong(interval)) {
             pesan.append("Sudah ")
-                    .append(interval.trim().toLowerCase())
+                    .append(interval.trim().toLowerCase(Locale.ROOT))
                     .append(" sejak terakhir ganti oli di RR MOTOR.\n\n");
-
-            pesan.append(
-                    "Kami mengingatkan untuk melakukan "
-                            + "pengecekan atau penggantian oli.\n\n"
-            );
         }
 
-        // Informasi hanya ditampilkan jika tersedia.
+        pesan.append(
+                "Kami mengingatkan untuk melakukan pengecekan "
+                        + "atau pergantian oli motor.\n\n");
+
         tambahBaris(pesan, "Nomor polisi", nopol);
         tambahBaris(pesan, "Nomor mesin", mesin);
 
         if (!kosong(km)) {
-            tambahBaris(pesan, "KM terakhir", km);
+            try {
+                String angkaKM = km.trim()
+                        .replace(".", "")
+                        .replace(",", "")
+                        .replace(" ", "");
+
+                long kmTerakhir = Long.parseLong(angkaKM);
+
+                long tambahanKembali;
+                long tambahanPalingLambat;
+
+                if ("Motor ojek".equalsIgnoreCase(jenisMotor)) {
+                    tambahanKembali = 1000;
+                    tambahanPalingLambat = 1500;
+
+                } else if ("NMAX & sejenisnya".equalsIgnoreCase(jenisMotor)
+                        || "NMAX".equalsIgnoreCase(jenisMotor)) {
+                    tambahanKembali = 2000;
+                    tambahanPalingLambat = 2500;
+
+                } else {
+                    tambahanKembali = 1500;
+                    tambahanPalingLambat = 2000;
+                }
+
+                long kmKembali = kmTerakhir + tambahanKembali;
+                long kmPalingLambat = kmTerakhir + tambahanPalingLambat;
+
+                pesan.append("KM terakhir: ")
+                        .append(formatKM(kmTerakhir))
+                        .append(" KM\n");
+
+                pesan.append("Ganti oli kembali: ")
+                        .append(formatKM(kmKembali))
+                        .append(" KM\n");
+
+                pesan.append("Ganti oli paling lambat: ")
+                        .append(formatKM(kmPalingLambat))
+                        .append(" KM\n");
+
+            } catch (NumberFormatException e) {
+                Log.e(TAG, "Format KM tidak valid: " + km, e);
+            }
         }
 
         pesan.append("\nPengecekan oli GRATIS.\n\n");
 
         pesan.append(
                 "Terima kasih telah mempercayakan perawatan "
-                        + "motor Anda kepada *RR MOTOR*."
-        );
+                        + "motor Anda kepada *RR MOTOR*.");
 
         return pesan.toString();
+    }
+
+    private static String formatKM(long km) {
+        return String.format(Locale.US, "%,d", km).replace(",", ".");
     }
 
     private static void tambahBaris(
@@ -434,7 +362,6 @@ public class ReminderReceiver extends BroadcastReceiver {
             String nilai) {
 
         if (!kosong(nilai)) {
-
             pesan.append(label)
                     .append(": ")
                     .append(nilai.trim())
@@ -443,26 +370,18 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     private static boolean kosong(String nilai) {
-
         return nilai == null
                 || nilai.trim().isEmpty()
                 || "-".equals(nilai.trim());
     }
 
-    private static String ambil(
-            Intent intent,
-            String key) {
-
+    private static String ambil(Intent intent, String key) {
         String nilai = intent.getStringExtra(key);
-
         return nilai == null ? "" : nilai.trim();
     }
 
     private static String normalisasiNomor(String nomor) {
-
-        if (nomor == null) {
-            return "";
-        }
+        if (nomor == null) return "";
 
         nomor = nomor.replaceAll("[^0-9]", "");
 
@@ -485,20 +404,8 @@ public class ReminderReceiver extends BroadcastReceiver {
             String whatsapp,
             long waktu) {
 
-        jadwalkan(
-                context,
-                id,
-                nama,
-                nopol,
-                whatsapp,
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                waktu
-        );
+        jadwalkan(context, id, nama, nopol, whatsapp,
+                "", "", "", "", "", "", waktu);
     }
 
     public static void jadwalkan(
@@ -515,23 +422,16 @@ public class ReminderReceiver extends BroadcastReceiver {
             String jatuhTempo,
             long waktu) {
 
-        if (id == null || id.trim().isEmpty()) {
-            return;
-        }
+        if (id == null || id.trim().isEmpty()) return;
 
-        // Jika jadwal sudah lewat, jalankan sekitar 1 menit lagi.
         if (waktu <= System.currentTimeMillis()) {
             waktu = System.currentTimeMillis() + 60_000L;
         }
 
         SharedPreferences prefs =
-                context.getSharedPreferences(
-                        PREFS,
-                        Context.MODE_PRIVATE
-                );
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
         try {
-
             JSONObject data = new JSONObject();
 
             data.put("id", aman(id));
@@ -547,36 +447,19 @@ public class ReminderReceiver extends BroadcastReceiver {
             data.put("waktu", waktu);
 
             prefs.edit()
-                    .putString(
-                            "reminder_" + id,
-                            data.toString())
-                    .putString(
-                            "wa_" + id,
-                            aman(whatsapp))
+                    .putString("reminder_" + id, data.toString())
+                    .putString("wa_" + id, aman(whatsapp))
                     .remove("done_" + id)
                     .apply();
 
         } catch (Exception e) {
-
             Log.e(TAG, "Gagal menyimpan jadwal.", e);
-
             return;
         }
 
-        buatAlarm(
-                context,
-                id,
-                aman(nama),
-                aman(nopol),
-                aman(whatsapp),
-                aman(nomorMesin),
-                aman(kmTerakhir),
-                aman(interval),
-                aman(jenisMotor),
-                aman(tanggalInput),
-                aman(jatuhTempo),
-                waktu
-        );
+        buatAlarm(context, id, aman(nama), aman(nopol), aman(whatsapp),
+                aman(nomorMesin), aman(kmTerakhir), aman(interval),
+                aman(jenisMotor), aman(tanggalInput), aman(jatuhTempo), waktu);
     }
 
     private static void buatAlarm(
@@ -593,10 +476,7 @@ public class ReminderReceiver extends BroadcastReceiver {
             String jatuhTempo,
             long waktu) {
 
-        Intent alarmAction = new Intent(
-                context,
-                ReminderReceiver.class
-        );
+        Intent alarmAction = new Intent(context, ReminderReceiver.class);
 
         alarmAction.putExtra("id", id);
         alarmAction.putExtra("nama", nama);
@@ -618,93 +498,60 @@ public class ReminderReceiver extends BroadcastReceiver {
         );
 
         AlarmManager alarmManager =
-                (AlarmManager) context.getSystemService(
-                        Context.ALARM_SERVICE
-                );
+                (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
         if (alarmManager == null) {
-
             Log.e(TAG, "AlarmManager tidak tersedia.");
-
             return;
         }
 
         try {
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-
                 alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        waktu,
-                        alarmIntent
-                );
-
+                        AlarmManager.RTC_WAKEUP, waktu, alarmIntent);
             } else {
-
                 alarmManager.set(
-                        AlarmManager.RTC_WAKEUP,
-                        waktu,
-                        alarmIntent
-                );
+                        AlarmManager.RTC_WAKEUP, waktu, alarmIntent);
             }
 
-            Log.d(
-                    TAG,
-                    "Alarm dijadwalkan untuk "
-                            + id + " pada " + waktu
-            );
+            Log.d(TAG, "Alarm dijadwalkan untuk " + id + " pada " + waktu);
 
         } catch (SecurityException e) {
-
             Log.e(TAG, "Izin menjadwalkan alarm ditolak.", e);
         }
     }
 
     // =====================================================
-    // PULIHKAN ALARM SETELAH HP MENYALA KEMBALI
+    // PULIHKAN JADWAL SETELAH HP MENYALA
     // =====================================================
 
     public static void pulihkanSemuaJadwal(Context context) {
 
         SharedPreferences prefs =
-                context.getSharedPreferences(
-                        PREFS,
-                        Context.MODE_PRIVATE
-                );
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
         Map<String, ?> semua = prefs.getAll();
-
         int jumlah = 0;
 
         for (Map.Entry<String, ?> entry : semua.entrySet()) {
 
             String kunci = entry.getKey();
 
-            if (!kunci.startsWith("reminder_")) {
-                continue;
-            }
+            if (!kunci.startsWith("reminder_")) continue;
 
             Object nilai = entry.getValue();
 
-            if (!(nilai instanceof String)) {
-                continue;
-            }
+            if (!(nilai instanceof String)) continue;
 
             try {
-
                 JSONObject data = new JSONObject((String) nilai);
 
                 String id = data.optString("id", "");
                 long waktu = data.optLong("waktu", 0L);
 
-                if (id.isEmpty() || waktu <= 0L) {
-                    continue;
-                }
+                if (id.isEmpty() || waktu <= 0L) continue;
 
-                // Jangan memulihkan jadwal yang sudah ditandai selesai.
-                if (prefs.getBoolean("done_" + id, false)) {
-                    continue;
-                }
+                if (prefs.getBoolean("done_" + id, false)) continue;
 
                 buatAlarm(
                         context,
@@ -724,37 +571,22 @@ public class ReminderReceiver extends BroadcastReceiver {
                 jumlah++;
 
             } catch (Exception e) {
-
-                Log.e(
-                        TAG,
-                        "Gagal memulihkan jadwal: " + kunci,
-                        e
-                );
+                Log.e(TAG, "Gagal memulihkan jadwal: " + kunci, e);
             }
         }
 
-        Log.d(
-                TAG,
-                "Jumlah jadwal yang dipulihkan: " + jumlah
-        );
+        Log.d(TAG, "Jumlah jadwal yang dipulihkan: " + jumlah);
     }
 
     // =====================================================
     // MEMBATALKAN ALARM
     // =====================================================
 
-    public static void batalkan(
-            Context context,
-            String id) {
+    public static void batalkan(Context context, String id) {
 
-        if (id == null || id.trim().isEmpty()) {
-            return;
-        }
+        if (id == null || id.trim().isEmpty()) return;
 
-        Intent intent = new Intent(
-                context,
-                ReminderReceiver.class
-        );
+        Intent intent = new Intent(context, ReminderReceiver.class);
 
         PendingIntent alarmIntent = PendingIntent.getBroadcast(
                 context,
@@ -765,19 +597,14 @@ public class ReminderReceiver extends BroadcastReceiver {
         );
 
         AlarmManager alarmManager =
-                (AlarmManager) context.getSystemService(
-                        Context.ALARM_SERVICE
-                );
+                (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
         if (alarmManager != null) {
             alarmManager.cancel(alarmIntent);
         }
 
         SharedPreferences prefs =
-                context.getSharedPreferences(
-                        PREFS,
-                        Context.MODE_PRIVATE
-                );
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
         prefs.edit()
                 .remove("reminder_" + id)
@@ -786,8 +613,7 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         NotificationManager manager =
                 (NotificationManager) context.getSystemService(
-                        Context.NOTIFICATION_SERVICE
-                );
+                        Context.NOTIFICATION_SERVICE);
 
         if (manager != null) {
             manager.cancel(id.hashCode());
@@ -804,27 +630,21 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
-            NotificationChannel channel =
-                    new NotificationChannel(
-                            CHANNEL_ID,
-                            "Reminder Ganti Oli RR MOTOR",
-                            NotificationManager.IMPORTANCE_HIGH
-                    );
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "Reminder Ganti Oli RR MOTOR",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
 
             channel.setDescription(
-                    "Pengingat jadwal ganti oli pelanggan RR MOTOR"
-            );
+                    "Pengingat jadwal ganti oli pelanggan RR MOTOR");
 
             channel.enableVibration(true);
-
-            channel.setLockscreenVisibility(
-                    Notification.VISIBILITY_PUBLIC
-            );
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
 
             NotificationManager manager =
                     (NotificationManager) context.getSystemService(
-                            Context.NOTIFICATION_SERVICE
-                    );
+                            Context.NOTIFICATION_SERVICE);
 
             if (manager != null) {
                 manager.createNotificationChannel(channel);
@@ -833,7 +653,6 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     private static String aman(String teks) {
-
         return teks == null ? "" : teks.trim();
     }
 }
